@@ -1,0 +1,12 @@
+# The importable surface of gutachten, recorded.
+# Regenerate deliberately, in the same commit as the change that moves it.
+gutachten
+gutachten.cli
+gutachten.compare
+gutachten.data
+gutachten.manifest
+gutachten.stats
+gutachten.surface
+gutachten.sweep
+gutachten.transforms
+gutachten.x3p

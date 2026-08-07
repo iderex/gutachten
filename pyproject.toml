@@ -33,9 +33,83 @@ dependencies = [
     "matplotlib>=3.9,<4",
 ]
 
+[dependency-groups]
+# Development tooling, installed by `uv sync` and never shipped in the wheel.
+# The no-copyleft constraint above is a constraint on what a distributed work
+# links, and none of this is distributed or linked. Hypothesis is MPL-2.0, which
+# is copyleft at file level, and it is here deliberately and disclosed rather
+# than quietly folded into the sentence above. It imposes nothing on this
+# repository as a test-time tool. If it ever moves into the runtime
+# dependencies, that is a new decision and the license question in
+# https://github.com/iderex/gutachten/issues/2 is where it goes.
+dev = [
+    # MIT. The test runner.
+    "pytest>=8.3,<9",
+    # MIT. Coverage measurement and the floor, wired into the pytest run.
+    "pytest-cov>=6.0,<8",
+    # MPL-2.0, copyleft, test-time only. Property tests over generated inputs.
+    "hypothesis>=6.112,<7",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+# Configured here rather than in a scattering of files, so there is one place a
+# contributor looks and one place a setting can be wrong.
+minversion = "8.0"
+testpaths = ["tests"]
+# The repository root on the path so `tests.support` is importable from a test.
+pythonpath = ["."]
+# harness/ is what the gate does not run. It is excluded by configuration rather
+# than by a skip scattered through the suite, so that a run which covered less
+# than the whole set cannot be read as one that covered it and found nothing.
+#
+# This setting REPLACES pytest's defaults rather than extending them, so the
+# defaults are restated here and `harness` is added to them. Listing only
+# `harness` was tried first and made the suite fail to collect at all the moment
+# a tool wrote a dot directory into the tree, because `.*` had silently stopped
+# being ignored.
+norecursedirs = [
+    "*.egg",
+    ".*",
+    "_darcs",
+    "build",
+    "CVS",
+    "dist",
+    "node_modules",
+    "venv",
+    "{arch}",
+    "harness",
+]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+    "--cov=gutachten",
+    "--cov=tests/support",
+    "--cov-report=term-missing",
+    # The floor. Coverage here is a check on what was never exercised at all,
+    # not a quality score, so this number is the level below which a whole
+    # module has plainly never been imported by anything. It is set by argument
+    # rather than at whatever the first run happened to print, and the argument
+    # is in the issue that introduced it. Raise it when the tree earns it; do
+    # not lower it to make a run pass.
+    "--cov-fail-under=90",
+]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["gutachten", "tests/support"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
 
 [tool.hatch.build.targets.wheel]
 # The package lives under src/ rather than at the repository root. That is what
