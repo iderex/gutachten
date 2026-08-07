@@ -30,8 +30,7 @@ RECORDING = Path(__file__).with_name("package_surface.txt")
 def observed_surface() -> list[str]:
     names = [gutachten.__name__]
     names += [
-        module.name
-        for module in pkgutil.walk_packages(gutachten.__path__, prefix="gutachten.")
+        module.name for module in pkgutil.walk_packages(gutachten.__path__, prefix="gutachten.")
     ]
     return sorted(names)
 

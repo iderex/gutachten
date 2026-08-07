@@ -45,7 +45,9 @@ def test_a_shape_mismatch_is_not_a_tolerance_question() -> None:
 def test_a_relative_tolerance_scales_with_the_expected_value() -> None:
     assert_close(1000.1, 1000.0, what="a large value", atol=0.0, rtol=1e-3)
     with pytest.raises(ToleranceError):
-        assert_close(1.1, 1.0, what="a small value at the same relative tolerance", atol=0.0, rtol=1e-3)
+        assert_close(
+            1.1, 1.0, what="a small value at the same relative tolerance", atol=0.0, rtol=1e-3
+        )
 
 
 def test_a_negative_tolerance_is_refused_rather_than_treated_as_zero() -> None:

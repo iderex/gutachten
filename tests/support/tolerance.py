@@ -23,7 +23,7 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["assert_close", "ToleranceError"]
+__all__ = ["ToleranceError", "assert_close"]
 
 
 class ToleranceError(AssertionError):
