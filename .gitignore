@@ -1,0 +1,26 @@
+# The synced environment. uv rebuilds it from uv.lock, so it is derived and
+# never committed.
+.venv/
+
+# Python build and import artefacts.
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Tool caches.
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# Coverage output.
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Downloaded scans and anything derived from them. Nothing downloaded is
+# committed, so the cache directory is ignored rather than tracked.
+cache/

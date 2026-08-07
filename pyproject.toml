@@ -37,8 +37,9 @@ dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.uv]
-# The source tree does not exist yet, so there is nothing to build and install
-# from this project itself. Only the dependencies are synced. The layout issue
-# is what creates src/gutachten/ and removes this line.
-package = false
+[tool.hatch.build.targets.wheel]
+# The package lives under src/ rather than at the repository root. That is what
+# keeps an accidental import of the working directory from passing a test which
+# would fail against the installed package, because with a src layout the
+# working directory holds no importable `gutachten` at all.
+packages = ["src/gutachten"]
