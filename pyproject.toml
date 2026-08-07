@@ -44,7 +44,7 @@ dependencies = [
 # https://github.com/iderex/gutachten/issues/2 is where it goes.
 dev = [
     # MIT. The test runner.
-    "pytest>=8.3,<9",
+    "pytest>=9.0.3,<10",
     # MIT. Coverage measurement and the floor, wired into the pytest run.
     "pytest-cov>=6.0,<8",
     # MPL-2.0, copyleft, test-time only. Property tests over generated inputs.
