@@ -1,0 +1,21 @@
+# Text is normalised to LF in the repository and checked out as LF everywhere,
+# including Windows. Half the work on this project happens on Windows, and a
+# formatting check that reports every file as failing on a freshly cloned tree
+# is a check people learn to ignore. Setting the end of line here rather than
+# relying on each clone's core.autocrlf means the answer is the same for every
+# contributor and is carried by the repository instead of by local
+# configuration.
+* text=auto eol=lf
+
+# Height arrays and other measurement data are bytes. Marking them binary keeps
+# any normalisation, and any diff, away from them: a line ending rewrite inside
+# a height array is a silent corruption of the measurement.
+*.x3p binary
+*.npy binary
+*.npz binary
+*.png binary
+*.jpg binary
+*.tif binary
+*.tiff binary
+*.zip binary
+*.pdf binary

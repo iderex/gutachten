@@ -1,0 +1,18 @@
+# One place that says what the files look like, so an editor agrees with the
+# formatter instead of fighting it.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml,json,toml}]
+indent_size = 2
+
+[*.md]
+# Trailing whitespace is a line break in Markdown, so it is left alone here.
+trim_trailing_whitespace = false
