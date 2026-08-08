@@ -18,7 +18,6 @@ causes it.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from gutachten.determinism import REFERENCE_THREADS, DeterminismRecord, RunMode
@@ -61,18 +60,12 @@ def a_reference_run() -> RunManifest:
     )
 
 
-def serialised(manifest: RunManifest) -> str:
-    """The one serialisation this recording is made in.
-
-    ``sort_keys`` is off deliberately. The schema decides the order of its own
-    keys and the recording is what proves that order is stable; sorting here
-    would hide a schema that had stopped deciding it.
-    """
-    return json.dumps(manifest.to_dict(), indent=2, sort_keys=False) + "\n"
-
-
 def test_a_complete_manifest_matches_its_recording() -> None:
-    observed = serialised(a_reference_run())
+    # `to_text`, the writer a run actually uses, rather than a serialisation
+    # written out here. A recording made by the test's own copy of the writer
+    # records the copy, and the two then drift in the direction where the
+    # recording keeps passing.
+    observed = a_reference_run().to_text()
     recorded = RECORDING.read_text(encoding="utf-8")
 
     assert observed == recorded, (
