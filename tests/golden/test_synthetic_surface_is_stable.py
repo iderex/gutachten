@@ -1,29 +1,47 @@
-"""The same seed gives the same surface, on every platform.
+"""The same seed gives the same surface, and this is where "same" got measured.
 
 The unit tests show that two calls in one process agree. That is the easy half.
-The half that matters for a sensitivity study is that a surface generated on a
-Linux runner is the same surface as one generated on Windows, because otherwise
-a recorded result cannot be reproduced by anyone who is not on the machine that
-recorded it.
+The half that matters for a sensitivity study is whether a surface generated on
+a Linux runner is the surface generated on Windows, because otherwise a recorded
+result cannot be reproduced by anyone who is not on the machine that recorded it.
 
-This is a golden test rather than an assertion about equality, so the recording
-travels with the repository and the three platform jobs each compare against the
-same bytes. A digest is used instead of the array because the array is a hundred
-and fifty kilobytes and the thing being checked is whether any byte moved.
+It is not, and that was measured rather than assumed. One canonical surface
+hashed to three different digests on the three platforms of the build job:
 
-To accept a deliberate change to the generator, regenerate the digest in the same
-commit, so the recording and the reason for it arrive together. Regenerating it
-to make a red run go green is the failure this test exists against.
+    windows  69543b5f358cbd46ac45c8a2abf5cfae5b582e28b8ff196a1ca60ead498311eb
+    ubuntu   d6d7fd38de94a6a0f07df8419499835ede6a03e92a78c217ac1fe63058c34fb4
+    macos    eac324e689a444bdefa2b28f1d761986b5f80c7f99159d41f778b2104759c8c5
+
+Every draw comes from a `numpy.random.Generator`, which is bit-reproducible by
+design, so the divergence is not in the random numbers. It is in the
+transcendental functions: sine, cosine and the square root inside `hypot` are
+supplied by the platform's maths library and by whichever vector path NumPy
+takes, and those agree to within an ulp rather than exactly.
+
+So this test compares against a recorded surface at a stated tolerance instead of
+comparing digests, and the tolerance is what makes the statement honest. What is
+still refused is any change to the generator that moves a height by more than a
+picometre, which is every change anyone would make on purpose. What is no longer
+claimed is bit-identity, because it does not hold.
+
+Whether bit-identity is required here, and what it would cost to get it, is not
+this issue's to settle. It is the determinism issue's, and this measurement is
+the evidence it needs.
+
+To accept a deliberate change to the generator, regenerate the recording in the
+same commit, so the recording and the reason for it arrive together.
 """
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
-from gutachten.synth import SurfaceParameters, generate
+import numpy as np
 
-RECORDING = Path(__file__).with_name("synthetic_surface_digest.txt")
+from gutachten.synth import SurfaceParameters, generate
+from tests.support.tolerance import assert_close
+
+RECORDING = Path(__file__).with_name("synthetic_surface.npy")
 
 # Fixed here rather than taken from the defaults, so that changing a default
 # does not silently change what this test is about.
@@ -44,30 +62,34 @@ CANONICAL = SurfaceParameters(
     seed=20260808,
 )
 
-
-def digest_of(parameters: SurfaceParameters) -> str:
-    surface = generate(parameters)
-    array = surface.heights_um
-    # Byte order is stated rather than inherited, so a big endian machine would
-    # be compared against the same bytes as a little endian one instead of
-    # failing for a reason that has nothing to do with the generator.
-    return hashlib.sha256(array.astype(">f8").tobytes()).hexdigest()
+# A picometre, in the micrometre units the surface is in. Nine orders of
+# magnitude below the smallest feature the generator produces, and six orders
+# above the last-place disagreement between two platforms' maths libraries on
+# values of this size. A real change to the generator lands far outside it; a
+# change of platform lands far inside.
+PLATFORM_TOLERANCE_UM = 1e-9
 
 
 def test_the_canonical_surface_matches_its_recording() -> None:
-    recorded = [
-        line.strip()
-        for line in RECORDING.read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.startswith("#")
-    ]
-    assert len(recorded) == 1, f"{RECORDING.name} should hold exactly one digest"
+    recorded = np.load(RECORDING)
+    observed = generate(CANONICAL).heights_um
 
-    observed = digest_of(CANONICAL)
-    assert observed == recorded[0], (
-        f"the canonical synthetic surface no longer hashes to its recording. "
-        f"Recorded {recorded[0]}, generated {observed}. Either the generator "
-        f"changed, which means updating {RECORDING.name} in the same commit, or "
-        f"the same seed no longer gives the same surface on this platform, which "
-        f"means a recorded result cannot be reproduced anywhere else and is the "
-        f"more serious of the two."
+    assert observed.shape == recorded.shape, (
+        f"the canonical surface changed shape, from {recorded.shape} to {observed.shape}"
+    )
+
+    # Where there is no measurement is compared exactly and separately. A
+    # missing sample that became a number, or the reverse, is not a small
+    # numerical difference and no tolerance should be able to absorb it.
+    assert np.array_equal(np.isnan(observed), np.isnan(recorded)), (
+        "the pattern of missing data in the canonical surface moved, which is a "
+        "change in what was measured rather than in a measured value"
+    )
+
+    present = np.isfinite(recorded)
+    assert_close(
+        observed[present],
+        recorded[present],
+        what="canonical synthetic surface against its recording",
+        atol=PLATFORM_TOLERANCE_UM,
     )

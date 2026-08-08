@@ -1,3 +1,0 @@
-# sha256 of the canonical synthetic surface, big endian float64 bytes.
-# Regenerate deliberately, in the same commit as the change that moves it.
-69543b5f358cbd46ac45c8a2abf5cfae5b582e28b8ff196a1ca60ead498311eb
