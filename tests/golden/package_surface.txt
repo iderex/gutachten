@@ -8,5 +8,6 @@ gutachten.manifest
 gutachten.stats
 gutachten.surface
 gutachten.sweep
+gutachten.synth
 gutachten.transforms
 gutachten.x3p
