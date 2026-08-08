@@ -8,6 +8,6 @@ read. A step added to this directory and not added here is what
 ``unregistered_transforms`` refuses.
 """
 
-from gutachten.transforms import edge, level, outliers
+from gutachten.transforms import bandpass, edge, level, outliers
 
-__all__ = ["edge", "level", "outliers"]
+__all__ = ["bandpass", "edge", "level", "outliers"]
