@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from gutachten.surface import Surface
-from gutachten.transforms.base import record_for
+from gutachten.transforms.base import SurfaceProperty, record_for
 
 
 @dataclass(frozen=True)
@@ -34,6 +34,9 @@ class Clip:
     identifier = "example-clip"
     version = "1"
     parameters_type = ClipParameters
+    produces = frozenset({SurfaceProperty.FILTERED})
+    requires = frozenset({SurfaceProperty.LEVELLED})
+    refuses = frozenset[SurfaceProperty]()
 
     def apply(self, surface: Surface, parameters: ClipParameters) -> Surface:
         heights = surface.heights * parameters.factor

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from gutachten.transforms.base import Transform, check_parameters
+from gutachten.transforms.base import Transform, check_ordering, check_parameters
 
 __all__ = ["REGISTRY", "Registry"]
 
@@ -59,6 +59,7 @@ class Registry:
                 "ran."
             )
         check_parameters(transform.parameters_type)
+        check_ordering(transform)
         self._by_identifier[identifier] = transform
         return transform
 
