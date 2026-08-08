@@ -11,6 +11,7 @@ import json
 
 import pytest
 
+from gutachten.determinism import REFERENCE_THREADS, DeterminismRecord, RunMode, fast_mode
 from gutachten.manifest import (
     SCHEMA_VERSION,
     EnvironmentRecord,
@@ -37,6 +38,7 @@ def a_manifest(**overrides: object) -> RunManifest:
             ),
         ),
         "seed": 20260808,
+        "determinism": DeterminismRecord(mode=RunMode.REFERENCE, threads=REFERENCE_THREADS),
         "environment": EnvironmentRecord(
             software_version="0.0.0",
             dependencies=(("numpy", "2.1.0"), ("scipy", "1.14.0")),
@@ -47,7 +49,7 @@ def a_manifest(**overrides: object) -> RunManifest:
     return RunManifest(**arguments)  # type: ignore[arg-type]
 
 
-def test_a_manifest_names_the_input_profile_steps_seed_environment_and_outputs() -> None:
+def test_a_manifest_names_the_input_profile_steps_seed_determinism_environment_outputs() -> None:
     written = a_manifest().to_dict()
 
     assert written["schema_version"] == SCHEMA_VERSION
@@ -56,8 +58,29 @@ def test_a_manifest_names_the_input_profile_steps_seed_environment_and_outputs()
     assert [step["identifier"] for step in written["steps"]] == ["level", "bandpass"]
     assert written["steps"][1]["parameters"] == {"lower_um": 25.0, "upper_um": 250.0}
     assert written["seed"] == 20260808
+    assert written["determinism"]["mode"] == "reference"
+    assert written["determinism"]["threads"] == REFERENCE_THREADS
     assert written["environment"]["dependencies"] == {"numpy": "2.1.0", "scipy": "1.14.0"}
     assert written["outputs"] == [{"role": "surface", "sha256": ANOTHER_HASH}]
+
+
+def test_a_manifest_from_a_fast_run_carries_the_warning_in_the_manifest_itself() -> None:
+    # The manifest is the output at this stage, so this is where "the fast mode
+    # marks its own output" is met. A reader who never opens the documentation
+    # still meets the sentence.
+    written = a_manifest(determinism=fast_mode()).to_dict()
+
+    assert written["determinism"]["reportable"] is False
+    assert "may not be used for anything reported" in str(written["determinism"]["note"])
+
+
+def test_a_manifest_that_does_not_say_how_it_was_made_is_refused() -> None:
+    with pytest.raises(TypeError, match="must record how it was made"):
+        a_manifest(determinism=None)
+    # The near miss is the mode name on its own, which reads correctly in a
+    # diff and carries neither the thread count nor the warning.
+    with pytest.raises(TypeError, match="must record how it was made"):
+        a_manifest(determinism="reference")
 
 
 def test_the_steps_keep_the_order_they_ran_in() -> None:

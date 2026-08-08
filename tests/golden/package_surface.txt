@@ -4,6 +4,7 @@ gutachten
 gutachten.cli
 gutachten.compare
 gutachten.data
+gutachten.determinism
 gutachten.manifest
 gutachten.stats
 gutachten.surface
