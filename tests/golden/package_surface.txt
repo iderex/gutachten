@@ -10,4 +10,7 @@ gutachten.surface
 gutachten.sweep
 gutachten.synth
 gutachten.transforms
+gutachten.transforms.audit
+gutachten.transforms.base
+gutachten.transforms.registry
 gutachten.x3p
