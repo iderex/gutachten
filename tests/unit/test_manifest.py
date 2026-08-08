@@ -14,6 +14,7 @@ import pytest
 from gutachten.determinism import REFERENCE_THREADS, DeterminismRecord, RunMode, fast_mode
 from gutachten.manifest import (
     SCHEMA_VERSION,
+    ComparisonRecord,
     EnvironmentRecord,
     FileRecord,
     ProfileRecord,
@@ -140,6 +141,27 @@ def test_a_step_recording_its_parameters_unsorted_or_twice_is_refused() -> None:
         StepRecord(identifier="level", version="1", parameters=(("b", 1), ("a", 2)))
     with pytest.raises(ValueError, match="names a parameter twice"):
         StepRecord(identifier="level", version="1", parameters=(("a", 1), ("a", 2)))
+
+
+def test_a_comparison_without_a_method_or_a_version_is_refused() -> None:
+    with pytest.raises(ValueError, match="comparison's method"):
+        ComparisonRecord(method="", version="1", parameters=(("grid", 8),))
+    with pytest.raises(ValueError, match="comparison's version"):
+        ComparisonRecord(method="cells", version="", parameters=(("grid", 8),))
+
+
+def test_a_comparison_that_records_no_parameters_is_refused() -> None:
+    # The stage that decides the number is the one a sensitivity study most
+    # needs to be able to vary.
+    with pytest.raises(ValueError, match="records no parameters"):
+        ComparisonRecord(method="cells", version="1", parameters=())
+
+
+def test_a_comparison_recording_its_parameters_unsorted_or_twice_is_refused() -> None:
+    with pytest.raises(ValueError, match="unsorted"):
+        ComparisonRecord(method="cells", version="1", parameters=(("g", 1), ("a", 2)))
+    with pytest.raises(ValueError, match="names a parameter twice"):
+        ComparisonRecord(method="cells", version="1", parameters=(("g", 1), ("g", 2)))
 
 
 def test_an_environment_without_a_software_version_is_refused() -> None:

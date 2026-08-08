@@ -22,6 +22,7 @@ from pathlib import Path
 
 from gutachten.determinism import REFERENCE_THREADS, DeterminismRecord, RunMode
 from gutachten.manifest import (
+    ComparisonRecord,
     EnvironmentRecord,
     FileRecord,
     ProfileRecord,
@@ -57,6 +58,11 @@ def a_reference_run() -> RunManifest:
             dependencies=(("numpy", "2.1.0"), ("scipy", "1.14.0")),
         ),
         outputs=(FileRecord(role="surface", sha256="b" * 64),),
+        comparison=ComparisonRecord(
+            method="cell-correlation",
+            version="1",
+            parameters=(("grid", 8), ("minimum_valid", 0.5)),
+        ),
     )
 
 
