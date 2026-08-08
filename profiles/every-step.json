@@ -1,0 +1,168 @@
+{
+  "name": "every-step",
+  "version": "1",
+  "description": "One configuration among the many the sweep will visit, running every step this tree registers. It exists so that a chain longer than the reproduction chain is a profile rather than a code change, and its values are this repository's own rather than anybody's published ones.",
+  "steps": [
+    {
+      "transform": "mask-marks",
+      "parameters": {
+        "drag_width": 30.0,
+        "drag_position": -256.0,
+        "drag_angle_deg": 0.0,
+        "exclude_drag": true,
+        "extractor_radius": 40.0,
+        "extractor_distance": 100.0,
+        "extractor_angle_deg": 90.0,
+        "exclude_extractor": true
+      },
+      "sources": {
+        "drag_width": {
+          "origin": "not-sourced",
+          "where": "the width the synthetic generator digs its groove at, gutachten.synth.SurfaceParameters.drag_mark_width_um.",
+          "confidence": "exact for a generated surface, and a guess for any other. Nothing measures the width of a drag mark before this step is asked to mask it, which is the sequencing this project has not answered yet."
+        },
+        "drag_position": {
+          "origin": "not-sourced",
+          "where": "where the generator puts the groove on a 256 row field sampled at 4 micrometres: (0.25 - 0.5) times 1024 micrometres, from gutachten.synth._drag_mark.",
+          "confidence": "exact on that field and wrong on a field of another size, because this parameter is a length from the centre and the generator's is a fraction of the extent."
+        },
+        "drag_angle_deg": {
+          "origin": "not-sourced",
+          "where": "the generator's groove runs along the column axis, which is zero degrees in this step's convention.",
+          "confidence": "exact for a generated surface. A real drag mark's direction is a property of the mechanism and is not known before it is measured."
+        },
+        "exclude_drag": {
+          "origin": "not-sourced",
+          "where": "excluding it is what the published chains do, and #57 is the issue that made this a setting rather than a fact. The other value is a reachable configuration and this profile is not the argument for either.",
+          "confidence": "this is the parameter the board exists to sweep, so a confidence here would be the answer the sweep has not produced."
+        },
+        "extractor_radius": {
+          "origin": "not-sourced",
+          "where": "the disc used in tests/unit/transforms/test_marks.py, which is a construction rather than a measurement.",
+          "confidence": "none. The generator has no extractor mark, so no value here is checked against anything."
+        },
+        "extractor_distance": {
+          "origin": "not-sourced",
+          "where": "as extractor_radius.",
+          "confidence": "none, for the same reason."
+        },
+        "extractor_angle_deg": {
+          "origin": "not-sourced",
+          "where": "as extractor_radius.",
+          "confidence": "none, for the same reason."
+        },
+        "exclude_extractor": {
+          "origin": "not-sourced",
+          "where": "as exclude_drag: excluded in the published chains, and a setting here.",
+          "confidence": "as exclude_drag."
+        }
+      }
+    },
+    {
+      "transform": "trim-edge",
+      "parameters": {
+        "width": 40.0,
+        "criterion": "frame"
+      },
+      "sources": {
+        "width": {
+          "origin": "not-sourced",
+          "where": "ten samples at a 4 micrometre sampling interval, chosen so that this configuration trims less than the reproduction chain does and the two profiles differ in something a reader can see.",
+          "confidence": "none. It is a configuration, not a recommendation."
+        },
+        "criterion": {
+          "origin": "not-sourced",
+          "where": "in from the boundary of the array, which is what a surface with no missing edge to grow from admits.",
+          "confidence": "structural on a surface generated without edge dropout: \"grow\" measures out from what is already missing and there is nothing missing."
+        }
+      }
+    },
+    {
+      "transform": "reject-outliers",
+      "parameters": {
+        "criterion": "median-absolute-deviation",
+        "threshold": 5.0,
+        "neighbourhood": null
+      },
+      "sources": {
+        "criterion": {
+          "origin": "not-sourced",
+          "where": "the robust of the two this step offers. gutachten.transforms.outliers says why the other one is inflated by the spikes it is being asked to find.",
+          "confidence": "the argument for the criterion is in that module. What threshold it should carry is not settled by it."
+        },
+        "threshold": {
+          "origin": "not-sourced",
+          "where": "five spreads, which is far enough out that the measurement noise of a generated surface does not reach it.",
+          "confidence": "none. This is one of the parameters the sensitivity analysis exists to move."
+        },
+        "neighbourhood": {
+          "origin": "not-sourced",
+          "where": "null takes the centre and the spread over the whole surface, which is the cheaper of the two routes the step offers.",
+          "confidence": "none. Which route is right depends on whether the surface's own form has been removed first, and here it has not."
+        }
+      }
+    },
+    {
+      "transform": "level",
+      "parameters": {
+        "model": "polynomial",
+        "order": 2,
+        "robust_tuning": null,
+        "robust_passes": null
+      },
+      "sources": {
+        "model": {
+          "origin": "not-sourced",
+          "where": "the second order polynomial, chosen so this profile differs from the reproduction chain's plane in the form it removes.",
+          "confidence": "none. Which form belongs on a primer face is a question the sweep is being built to answer."
+        },
+        "order": {
+          "origin": "not-sourced",
+          "where": "the lowest order the polynomial model admits.",
+          "confidence": "none, as model."
+        },
+        "robust_tuning": {
+          "origin": "not-sourced",
+          "where": "null is an ordinary least squares fit, which is what this configuration differs from the reproduction chain by.",
+          "confidence": "none. What robustness is worth at this step is a sweep result."
+        },
+        "robust_passes": {
+          "origin": "not-sourced",
+          "where": "null, because the two fields are set together and this fit is not robust.",
+          "confidence": "structural. gutachten.transforms.level refuses one of the two without the other."
+        }
+      }
+    },
+    {
+      "transform": "bandpass",
+      "parameters": {
+        "short_cutoff": 20.0,
+        "long_cutoff": 120.0,
+        "robust_tuning": 4.0,
+        "robust_passes": 3
+      },
+      "sources": {
+        "short_cutoff": {
+          "origin": "not-sourced",
+          "where": "the band docs/filtering.md measured this filter's transmission over in this tree.",
+          "confidence": "the transmission at these cutoffs is measured; that this band is the right one for a comparison is not."
+        },
+        "long_cutoff": {
+          "origin": "not-sourced",
+          "where": "as short_cutoff.",
+          "confidence": "as short_cutoff."
+        },
+        "robust_tuning": {
+          "origin": "not-sourced",
+          "where": "the constant docs/filtering.md measured the robust filter with, and what it costs at the short cutoff is a number in that file.",
+          "confidence": "the cost is measured. The value is a choice."
+        },
+        "robust_passes": {
+          "origin": "not-sourced",
+          "where": "as robust_tuning.",
+          "confidence": "as robust_tuning."
+        }
+      }
+    }
+  ]
+}
