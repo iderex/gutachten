@@ -14,10 +14,11 @@ and it is why the schema is a set of frozen records with a version rather than
 whatever dictionary a writer happened to assemble.
 
 What it names: the inputs by hash, the profile by name and version, every step in
-order with its version and its resolved parameters, the seed, which of the two
-modes in ``gutachten.determinism`` the run was made in and what its thread count
-was pinned to, the software version and the resolved versions of the
-dependencies that affect a number, and the outputs by hash. A field that is not
+order with its version and its resolved parameters, the comparison stage with
+its own parameters where the run made one, the seed, which of the two modes in
+``gutachten.determinism`` the run was made in and what its thread count was
+pinned to, the software version and the resolved versions of the dependencies
+that affect a number, and the outputs by hash. A field that is not
 in this list does not affect a result, and if one turns out to, the schema is
 wrong and its version moves.
 
@@ -95,6 +96,7 @@ from gutachten.transforms.registry import Registry
 
 __all__ = [
     "SCHEMA_VERSION",
+    "ComparisonRecord",
     "EnvironmentRecord",
     "FileRecord",
     "ProfileRecord",
@@ -112,8 +114,11 @@ __all__ = [
 #: Moves when the meaning of a field changes, not when a transform does. Moved
 #: to 2 when the determinism record was added, because whether a run pinned its
 #: thread count decides whether a re-run is expected to agree with it, and a
-#: version 1 manifest does not say.
-SCHEMA_VERSION = 2
+#: version 1 manifest does not say. Moved to 3 when the comparison record was
+#: added, because the parameters of the stage that produces the number were not
+#: recorded anywhere before it and a version 2 manifest cannot say what they
+#: were.
+SCHEMA_VERSION = 3
 
 _SHA256 = re.compile(r"\A[0-9a-f]{64}\Z")
 
@@ -203,6 +208,44 @@ class StepRecord:
 
 
 @dataclass(frozen=True)
+class ComparisonRecord:
+    """The stage that turned two surfaces into numbers, and what it ran with.
+
+    Shaped like a step record and separate from one, because a comparison takes
+    two surfaces and produces neither, so it is not something the chain can
+    carry. ``method`` is what the stage is called and ``version`` moves when the
+    same input would produce a different number, which is the rule a transform's
+    version follows applied to a stage that is not a transform.
+    """
+
+    method: str
+    version: str
+    parameters: tuple[tuple[str, ParameterValue], ...]
+
+    def __post_init__(self) -> None:
+        _require_text(self.method, "a comparison's method")
+        _require_text(self.version, "a comparison's version")
+        keys = [key for key, _ in self.parameters]
+        if sorted(keys) != keys:
+            raise ValueError(f"comparison {self.method!r} records its parameters unsorted: {keys}")
+        if len(set(keys)) != len(keys):
+            raise ValueError(f"comparison {self.method!r} names a parameter twice: {keys}")
+        if not self.parameters:
+            raise ValueError(
+                f"comparison {self.method!r} records no parameters. The stage that decides "
+                "the number is the one a sensitivity study most needs to be able to vary, "
+                "and a stage with nothing recorded cannot be varied from a manifest."
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "method": self.method,
+            "version": self.version,
+            "parameters": dict(self.parameters),
+        }
+
+
+@dataclass(frozen=True)
 class EnvironmentRecord:
     """What the numbers were produced by, beyond the code in this repository.
 
@@ -240,6 +283,10 @@ class RunManifest:
     determinism: DeterminismRecord
     environment: EnvironmentRecord
     outputs: tuple[FileRecord, ...]
+    #: The comparison stage, or nothing where the run only preprocessed. Written
+    #: either way rather than left out, so a manifest that made no comparison
+    #: says so instead of being a manifest a reader has to guess about.
+    comparison: ComparisonRecord | None = None
     schema_version: int = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
@@ -277,6 +324,7 @@ class RunManifest:
             "inputs": [record.to_dict() for record in self.inputs],
             "profile": self.profile.to_dict(),
             "steps": [step.to_dict() for step in self.steps],
+            "comparison": None if self.comparison is None else self.comparison.to_dict(),
             "seed": self.seed,
             "determinism": self.determinism.to_dict(),
             "environment": self.environment.to_dict(),
@@ -308,6 +356,7 @@ REQUIRED_FIELDS = frozenset(
         "inputs",
         "profile",
         "steps",
+        "comparison",
         "seed",
         "determinism",
         "environment",
@@ -337,6 +386,7 @@ def from_dict(data: Mapping[str, Any]) -> RunManifest:
 
     determinism = data["determinism"]
     environment = data["environment"]
+    comparison = data["comparison"]
     return RunManifest(
         schema_version=int(data["schema_version"]),
         inputs=tuple(_file_record(item) for item in data["inputs"]),
@@ -350,6 +400,13 @@ def from_dict(data: Mapping[str, Any]) -> RunManifest:
                 parameters=tuple(sorted(step["parameters"].items())),
             )
             for step in data["steps"]
+        ),
+        comparison=None
+        if comparison is None
+        else ComparisonRecord(
+            method=str(comparison["method"]),
+            version=str(comparison["version"]),
+            parameters=tuple(sorted(comparison["parameters"].items())),
         ),
         seed=int(data["seed"]),
         determinism=DeterminismRecord(
@@ -428,6 +485,7 @@ def record_run(
     seed: int,
     determinism: DeterminismRecord,
     environment: EnvironmentRecord,
+    comparison: ComparisonRecord | None = None,
 ) -> tuple[Surface, RunManifest]:
     """Run a chain and return what it produced together with the manifest of it.
 
@@ -460,6 +518,7 @@ def record_run(
         determinism=determinism,
         environment=environment,
         outputs=(FileRecord(role="surface", sha256=surface_digest(result)),),
+        comparison=comparison,
     )
     return result, manifest
 

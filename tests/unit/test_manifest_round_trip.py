@@ -305,7 +305,7 @@ def test_a_manifest_at_a_schema_version_this_code_does_not_write_is_refused(
     data["schema_version"] = data["schema_version"] + 1
     path = tmp_path / "future.json"
     path.write_text(
-        manifest.to_text().replace('"schema_version": 2', '"schema_version": 3'),
+        manifest.to_text().replace('"schema_version": 3', '"schema_version": 4'),
         encoding="utf-8",
         newline="\n",
     )
