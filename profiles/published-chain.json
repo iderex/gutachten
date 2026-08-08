@@ -1,0 +1,88 @@
+{
+  "name": "published-chain",
+  "version": "1",
+  "description": "The preprocessing chain of the open reference implementation of the congruent matching cells method, carried across to the steps this tree registers. What could not be sourced is recorded at each parameter rather than filled in, and profiles/README.md says what the chain here leaves out.",
+  "steps": [
+    {
+      "transform": "trim-edge",
+      "parameters": {
+        "width": 120.0,
+        "criterion": "frame"
+      },
+      "sources": {
+        "width": {
+          "origin": "adapted",
+          "where": "the reference chain crops the exterior with an offset of 30, which counts samples rather than a length: preProcess_crop(region = \"exterior\", offset = -30) in https://github.com/CSAFE-ISU/cmcR README, read 2026-08-08. This step takes a length in the surface's own unit, and 120 micrometres is 30 samples at a 4 micrometre sampling interval.",
+          "confidence": "low. The conversion depends on the sampling interval of the scan, which a profile cannot know, so this length is 30 samples only on a surface sampled at 4 micrometres. On any other scan it trims a different amount than the reference chain does."
+        },
+        "criterion": {
+          "origin": "adapted",
+          "where": "the reference names a region, \"exterior\", where this step names what the width is measured from. Cropping the exterior is measuring in from the boundary of the array, which is this step's \"frame\".",
+          "confidence": "high. The two names describe the same operation, and the alternative here, \"grow\", measures out from what is already missing, which the reference's exterior crop does not do."
+        }
+      }
+    },
+    {
+      "transform": "level",
+      "parameters": {
+        "model": "plane",
+        "order": null,
+        "robust_tuning": 4.0,
+        "robust_passes": 3
+      },
+      "sources": {
+        "model": {
+          "origin": "adapted",
+          "where": "the reference removes a trend by quantile regression at the median: preProcess_removeTrend(statistic = \"quantile\", tau = .5, method = \"fn\") in https://github.com/CSAFE-ISU/cmcR README, read 2026-08-08. Which form that regression fits is not stated there, and \"plane\" is the first order form this step offers.",
+          "confidence": "low. That the reference fits a first order surface rather than a higher one was not established here, and this is the parameter of the four most likely to be wrong."
+        },
+        "order": {
+          "origin": "not-sourced",
+          "where": "the field belongs to the polynomial model and this profile does not use it. gutachten.transforms.level admits no other value for a plane.",
+          "confidence": "structural. Nothing else would run."
+        },
+        "robust_tuning": {
+          "origin": "not-sourced",
+          "where": "the reference fits at the median, which is robust, so an ordinary least squares fit here would be a worse reproduction than a robust one. Its estimator is not the biweight this step reweights with and has no tuning constant to carry across. 4.0 is the constant docs/filtering.md measured the robust bandpass in this tree with.",
+          "confidence": "low. The value comes from this repository rather than from the chain being reproduced, and what it costs is what the sensitivity analysis is for."
+        },
+        "robust_passes": {
+          "origin": "not-sourced",
+          "where": "same as robust_tuning. Three passes is what docs/filtering.md measured with.",
+          "confidence": "low, for the same reason."
+        }
+      }
+    },
+    {
+      "transform": "bandpass",
+      "parameters": {
+        "short_cutoff": 16.0,
+        "long_cutoff": 500.0,
+        "robust_tuning": null,
+        "robust_passes": null
+      },
+      "sources": {
+        "short_cutoff": {
+          "origin": "stated",
+          "where": "the reference chain calls preProcess_gaussFilter() with no arguments, and that function is documented as preProcess_gaussFilter(x3p, wavelength = c(16, 500), filtertype = \"bp\"), the smaller of the two being the short cutoff: https://csafe-isu.github.io/cmcR/reference/preProcess_gaussFilter.html, read 2026-08-08.",
+          "confidence": "the number is stated. Its unit is not stated on that page, and it is taken here to be the surface's own length unit, which for the scans that chain is documented against is the micrometre."
+        },
+        "long_cutoff": {
+          "origin": "stated",
+          "where": "the larger of the two wavelengths of the same default, in the same reference.",
+          "confidence": "as short_cutoff. Stated number, inferred unit."
+        },
+        "robust_tuning": {
+          "origin": "adapted",
+          "where": "the reference filter takes no robustness argument, so what it runs is the linear filter, and null is how this record says linear.",
+          "confidence": "high. The argument does not exist in that function's signature."
+        },
+        "robust_passes": {
+          "origin": "adapted",
+          "where": "same as robust_tuning.",
+          "confidence": "high, for the same reason."
+        }
+      }
+    }
+  ]
+}

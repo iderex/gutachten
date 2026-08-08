@@ -6,6 +6,7 @@ gutachten.compare
 gutachten.data
 gutachten.determinism
 gutachten.manifest
+gutachten.profile
 gutachten.stats
 gutachten.surface
 gutachten.sweep
