@@ -1,0 +1,50 @@
+{
+  "schema_version": 2,
+  "inputs": [
+    {
+      "role": "scan-a",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "profile": {
+    "name": "published",
+    "version": "1"
+  },
+  "steps": [
+    {
+      "identifier": "level",
+      "version": "2",
+      "parameters": {
+        "model": "plane"
+      }
+    },
+    {
+      "identifier": "bandpass",
+      "version": "1",
+      "parameters": {
+        "lower_um": 25.0,
+        "upper_um": 250.0
+      }
+    }
+  ],
+  "seed": 20260808,
+  "determinism": {
+    "mode": "reference",
+    "note": "Reference mode. The numerical backend is pinned to one thread, so a re-run on this machine in this locked environment reproduces this output byte for byte. Agreement with another platform holds only to the declared tolerance.",
+    "reportable": true,
+    "threads": 1
+  },
+  "environment": {
+    "software_version": "0.0.0",
+    "dependencies": {
+      "numpy": "2.1.0",
+      "scipy": "1.14.0"
+    }
+  },
+  "outputs": [
+    {
+      "role": "surface",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ]
+}

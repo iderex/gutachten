@@ -14,10 +14,12 @@ and it is why the schema is a set of frozen records with a version rather than
 whatever dictionary a writer happened to assemble.
 
 What it names: the inputs by hash, the profile by name and version, every step in
-order with its version and its resolved parameters, the seed, the software
-version and the resolved versions of the dependencies that affect a number, and
-the outputs by hash. A field that is not in this list does not affect a result,
-and if one turns out to, the schema is wrong and its version moves.
+order with its version and its resolved parameters, the seed, which of the two
+modes in ``gutachten.determinism`` the run was made in and what its thread count
+was pinned to, the software version and the resolved versions of the
+dependencies that affect a number, and the outputs by hash. A field that is not
+in this list does not affect a result, and if one turns out to, the schema is
+wrong and its version moves.
 
 Inputs and outputs are named by hash rather than carried. A scan is somebody
 else's file under somebody else's terms, and a hash is what lets a result be
@@ -56,6 +58,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from gutachten.determinism import DeterminismRecord
 from gutachten.surface import ParameterValue
 
 __all__ = [
@@ -67,8 +70,11 @@ __all__ = [
     "StepRecord",
 ]
 
-#: Moves when the meaning of a field changes, not when a transform does.
-SCHEMA_VERSION = 1
+#: Moves when the meaning of a field changes, not when a transform does. Moved
+#: to 2 when the determinism record was added, because whether a run pinned its
+#: thread count decides whether a re-run is expected to agree with it, and a
+#: version 1 manifest does not say.
+SCHEMA_VERSION = 2
 
 _SHA256 = re.compile(r"\A[0-9a-f]{64}\Z")
 
@@ -192,11 +198,18 @@ class RunManifest:
     profile: ProfileRecord
     steps: tuple[StepRecord, ...]
     seed: int
+    determinism: DeterminismRecord
     environment: EnvironmentRecord
     outputs: tuple[FileRecord, ...]
     schema_version: int = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
+        if not isinstance(self.determinism, DeterminismRecord):
+            raise TypeError(
+                f"a run manifest must record how it was made, got {self.determinism!r}. "
+                "Whether the thread count was pinned decides whether a re-run is "
+                "expected to agree, and a reader cannot infer it from the numbers."
+            )
         if self.schema_version != SCHEMA_VERSION:
             raise ValueError(
                 f"manifest schema version {self.schema_version} is not the version this "
@@ -226,6 +239,7 @@ class RunManifest:
             "profile": self.profile.to_dict(),
             "steps": [step.to_dict() for step in self.steps],
             "seed": self.seed,
+            "determinism": self.determinism.to_dict(),
             "environment": self.environment.to_dict(),
             "outputs": [record.to_dict() for record in self.outputs],
         }
