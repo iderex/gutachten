@@ -178,11 +178,14 @@ def test_registration_refuses_a_bad_parameter_record_rather_than_the_first_run()
         Registry().register(Sloppy())
 
 
-def test_the_shipped_registry_holds_no_step_yet_and_this_file_added_none_to_it() -> None:
-    # The fixtures above go into their own registries. A test that registered
-    # into REGISTRY would leak into every test that runs after it, and into the
-    # audit over the shipped steps.
-    assert REGISTRY.identifiers() == ()
+def test_the_fixtures_in_this_file_did_not_leak_into_the_shipped_registry() -> None:
+    # Every fixture above goes into a registry of its own. One that registered
+    # into REGISTRY would leak into every test running after it, into the audit
+    # over the shipped steps, and into any manifest resolved afterwards.
+    leaked = [name for name in REGISTRY.identifiers() if name.startswith("example-")]
+
+    assert leaked == []
+    assert "trim-edge" in REGISTRY.identifiers()
 
 
 def test_a_constraint_written_against_a_string_is_refused_at_registration() -> None:
