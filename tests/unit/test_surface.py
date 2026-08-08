@@ -227,6 +227,60 @@ def test_a_transform_record_refuses_a_parameter_named_twice() -> None:
         TransformRecord(name="bandpass", version="3", parameters=(("cut", 1.0), ("cut", 2.0)))
 
 
+def test_a_record_carries_what_the_step_found_apart_from_what_it_was_told() -> None:
+    # A parameter is an input a sweep varies and a re-run reproduces; an outcome
+    # is a measurement of what the run did. A reader who cannot tell them apart
+    # cannot use either.
+    record = TransformRecord.of("reject-outliers", "1", threshold=3.0).with_outcomes(
+        rejected=118, measured=2304
+    )
+
+    assert dict(record.parameters) == {"threshold": 3.0}
+    assert dict(record.outcomes) == {"measured": 2304, "rejected": 118}
+    assert [key for key, _ in record.outcomes] == ["measured", "rejected"]
+
+
+def test_a_record_with_no_outcomes_says_so_by_carrying_none() -> None:
+    # Most steps measure nothing worth recording, and an empty tuple is what
+    # says that rather than an absent field a reader has to know about.
+    assert TransformRecord.of("level", "1", model="plane").outcomes == ()
+
+
+def test_a_transform_record_refuses_outcomes_out_of_order() -> None:
+    with pytest.raises(ValueError, match="has outcomes out of order"):
+        TransformRecord(
+            name="reject-outliers", version="1", outcomes=(("rejected", 1), ("measured", 2))
+        )
+
+
+def test_a_transform_record_refuses_an_outcome_named_twice() -> None:
+    with pytest.raises(ValueError, match="names a outcome twice"):
+        TransformRecord(
+            name="reject-outliers", version="1", outcomes=(("rejected", 1), ("rejected", 2))
+        )
+
+
+def test_a_name_cannot_be_both_a_parameter_and_an_outcome() -> None:
+    # The failure is a reader who cannot tell whether a number was asked for or
+    # found, in a record whose whole purpose is to answer that.
+    with pytest.raises(ValueError, match="as both a parameter and an outcome"):
+        TransformRecord(
+            name="reject-outliers",
+            version="1",
+            parameters=(("threshold", 3.0),),
+            outcomes=(("threshold", 4.0),),
+        )
+
+
+def test_outcomes_are_written_once_and_not_added_to() -> None:
+    # Two answers to one question with nothing to say which of them the run
+    # produced.
+    written = TransformRecord.of("reject-outliers", "1", threshold=3.0).with_outcomes(rejected=1)
+
+    with pytest.raises(ValueError, match="already records outcomes"):
+        written.with_outcomes(rejected=2)
+
+
 def test_every_length_unit_declares_its_size() -> None:
     # The near miss: a unit added to the enum and not to the size map. Without
     # this test the omission surfaces as a KeyError on the first file read in

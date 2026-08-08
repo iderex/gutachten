@@ -15,6 +15,7 @@ gutachten.transforms.audit
 gutachten.transforms.base
 gutachten.transforms.edge
 gutachten.transforms.level
+gutachten.transforms.outliers
 gutachten.transforms.pipeline
 gutachten.transforms.registry
 gutachten.x3p

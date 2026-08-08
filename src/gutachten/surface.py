@@ -149,11 +149,22 @@ class TransformRecord:
     an unordered container is a source of run-to-run difference, which is the
     thing the determinism work in #25 is about; sorting once here means a
     provenance chain written twice is written the same way twice.
+
+    ``outcomes`` is what the step found, as against ``parameters``, which is
+    what it was told. The two are kept apart rather than merged into one bag of
+    names because they are read for opposite purposes: a parameter is an input a
+    sweep varies and a re-run has to reproduce, and an outcome is a measurement
+    of what the run did with it. How much surface a rejection step discarded is
+    the case this exists for. That count is not a setting anybody chose, and a
+    sensitivity report saying a threshold moved the score without saying how
+    much surface the threshold removed on the way is missing the more
+    interesting half.
     """
 
     name: str
     version: str
     parameters: tuple[tuple[str, ParameterValue], ...] = ()
+    outcomes: tuple[tuple[str, ParameterValue], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -163,19 +174,49 @@ class TransformRecord:
                 f"transform {self.name!r} has no version; a record without one "
                 "cannot say which implementation produced the surface"
             )
-        keys = [key for key, _ in self.parameters]
-        if sorted(keys) != keys:
+        for what, entries in (("parameters", self.parameters), ("outcomes", self.outcomes)):
+            keys = [key for key, _ in entries]
+            if sorted(keys) != keys:
+                raise ValueError(
+                    f"transform {self.name!r} has {what} out of order: {keys}; build the "
+                    "record with TransformRecord.of and with_outcomes, which sort them"
+                )
+            if len(set(keys)) != len(keys):
+                raise ValueError(f"transform {self.name!r} names a {what[:-1]} twice: {keys}")
+
+        both = sorted(dict(self.parameters).keys() & dict(self.outcomes).keys())
+        if both:
             raise ValueError(
-                f"transform {self.name!r} has parameters out of order: {keys}; "
-                "build the record with TransformRecord.of, which sorts them"
+                f"transform {self.name!r} records {both} as both a parameter and an "
+                "outcome. A reader cannot then tell whether the name is something the run "
+                "was told or something it found, and the two are read for opposite purposes."
             )
-        if len(set(keys)) != len(keys):
-            raise ValueError(f"transform {self.name!r} names a parameter twice: {keys}")
 
     @classmethod
     def of(cls, name: str, version: str, **parameters: ParameterValue) -> TransformRecord:
         """Build a record, sorting the parameters by name."""
         return cls(name=name, version=version, parameters=tuple(sorted(parameters.items())))
+
+    def with_outcomes(self, **outcomes: ParameterValue) -> TransformRecord:
+        """The same record carrying what the step found, sorted by name.
+
+        A separate call rather than an argument to ``of``, so every step still
+        builds its record from its parameters in the one place they all do and
+        adds its measurements where it has made them.
+        """
+        if self.outcomes:
+            raise ValueError(
+                f"transform {self.name!r} already records outcomes "
+                f"{[key for key, _ in self.outcomes]}. A record is written once; adding to "
+                "one that has been written leaves two answers to a question with nothing "
+                "to say which of them the run produced."
+            )
+        return TransformRecord(
+            name=self.name,
+            version=self.version,
+            parameters=self.parameters,
+            outcomes=tuple(sorted(outcomes.items())),
+        )
 
 
 @dataclass(frozen=True, eq=False)
