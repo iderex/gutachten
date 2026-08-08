@@ -47,9 +47,9 @@ several files on disk to open.
 ## What is not here
 
 Which profile an operator selects and how they select it is the operator surface
-and is #122. Carrying ``profiles/`` into a built distribution is #132. Refusing
-an under-specified parameter set at every route into the pipeline, rather than
-at this one, is #53.
+and is #122. Carrying ``profiles/`` into a built distribution is #132. This is
+the only route a parameter set reaches the pipeline by today, so it is where an
+under-specified one is refused; a second route would owe the same refusal.
 """
 
 from __future__ import annotations
@@ -77,6 +77,7 @@ __all__ = [
     "ProfileStep",
     "load",
     "load_directory",
+    "unprofiled",
 ]
 
 #: What a recorded provenance may say, and nothing else. The three are different
@@ -379,3 +380,16 @@ def load(path: Path, registry: Registry) -> Profile:
 def load_directory(directory: Path, registry: Registry) -> tuple[Profile, ...]:
     """Every profile in ``directory``, in file name order."""
     return tuple(load(path, registry) for path in sorted(directory.glob("*.json")))
+
+
+def unprofiled(profiles: Sequence[Profile], registry: Registry) -> tuple[str, ...]:
+    """Registered steps that no profile names, sorted.
+
+    A step no profile runs is a step whose parameters are never resolved against
+    a file, so a field added to it is a field nothing asks for. The loader
+    refuses a profile that does not set a declared parameter, and that refusal
+    only reaches a step some profile actually names, which is why the coverage
+    is a separate question from the completeness of any one profile.
+    """
+    named = {step.identifier for profile in profiles for step in profile.steps}
+    return tuple(identifier for identifier in registry.identifiers() if identifier not in named)

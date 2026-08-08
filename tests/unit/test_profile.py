@@ -16,10 +16,12 @@ import pytest
 
 from gutachten.determinism import REFERENCE_THREADS, DeterminismRecord, RunMode
 from gutachten.manifest import EnvironmentRecord, record_run
-from gutachten.profile import ORIGINS, Profile, ProfileError, load, load_directory
+from gutachten.profile import ORIGINS, Profile, ProfileError, load, load_directory, unprofiled
 from gutachten.surface import AxisOrientation, LengthUnit, Surface
 from gutachten.synth import SurfaceParameters, generate
+from gutachten.transforms.bandpass import RobustGaussianBandpass
 from gutachten.transforms.base import SurfaceProperty
+from gutachten.transforms.edge import TrimEdge
 from gutachten.transforms.registry import REGISTRY, Registry
 
 #: The directory a release will have to carry, which is #132. Resolved from this
@@ -147,6 +149,52 @@ def test_the_reproduction_profile_says_where_every_value_came_from() -> None:
     stated = [(step, name) for step, name, origin in origins if origin == "stated"]
     assert stated == [("bandpass", "short_cutoff"), ("bandpass", "long_cutoff")]
     assert len(origins) == 10
+
+
+def test_every_registered_step_is_named_by_a_shipped_profile() -> None:
+    # What makes a parameter added to a step red the build: the profiles resolve
+    # every step this tree registers, so a new field on any of them is a field
+    # some file on disk does not set. A step no profile runs escapes that,
+    # because nothing ever resolves its record against a file.
+    missing = unprofiled(shipped(), REGISTRY)
+    assert not missing, (
+        f"{list(missing)} is registered and no profile in profiles/ runs it, so a "
+        "parameter added to it would reach a sweep without any file having to name "
+        "it. profiles/every-step.json is the chain that exists to run every step."
+    )
+
+
+def test_a_step_no_profile_names_is_reported(tmp_path: Path) -> None:
+    # The same question asked of a registry and a profile set built here, so
+    # this bites whether or not the shipped profiles happen to be complete
+    # today.
+    registry = Registry()
+    registry.register(RobustGaussianBandpass())
+    registry.register(TrimEdge())
+    data = {
+        "name": "one-step",
+        "version": "1",
+        "description": "a profile naming one of the two registered steps",
+        "steps": [
+            {
+                "transform": "bandpass",
+                "parameters": {
+                    "short_cutoff": 16.0,
+                    "long_cutoff": 500.0,
+                    "robust_tuning": None,
+                    "robust_passes": None,
+                },
+                "sources": {
+                    name: a_source()
+                    for name in ("short_cutoff", "long_cutoff", "robust_tuning", "robust_passes")
+                },
+            }
+        ],
+    }
+    profile = load(written(tmp_path, data), registry)
+
+    assert unprofiled([profile], registry) == ("trim-edge",)
+    assert unprofiled([], registry) == ("bandpass", "trim-edge")
 
 
 def test_a_profile_that_does_not_set_a_parameter_is_refused(tmp_path: Path) -> None:
