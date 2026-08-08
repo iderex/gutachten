@@ -59,6 +59,49 @@
       }
     },
     {
+      "transform": "mask-firing-pin",
+      "parameters": {
+        "method": "detected",
+        "declared_centre_y": null,
+        "declared_centre_x": null,
+        "declared_radius": null,
+        "depth_threshold": 10.0,
+        "dilation": 8.0
+      },
+      "sources": {
+        "method": {
+          "origin": "not-sourced",
+          "where": "the detected circle, which is one of the three the published chains use and the only one of them with a recovered region to compare against a truth. gutachten.transforms.firing_pin says why the hand drawn region is not implemented.",
+          "confidence": "none as a recommendation. Which of the three methods is right is a question this profile exists to be swept against, not one it answers."
+        },
+        "declared_centre_y": {
+          "origin": "not-sourced",
+          "where": "null, because the detected method reads none of the three declared fields and the record refuses a run that states them anyway.",
+          "confidence": "structural. gutachten.transforms.firing_pin refuses a record carrying the fields of the method it does not name."
+        },
+        "declared_centre_x": {
+          "origin": "not-sourced",
+          "where": "as declared_centre_y.",
+          "confidence": "as declared_centre_y."
+        },
+        "declared_radius": {
+          "origin": "not-sourced",
+          "where": "as declared_centre_y.",
+          "confidence": "as declared_centre_y."
+        },
+        "depth_threshold": {
+          "origin": "not-sourced",
+          "where": "between the 12 micrometre peak to peak form and the 25 micrometre impression the generator digs, from gutachten.synth.SurfaceParameters.form_depth_um and firing_pin_depth_um, so it cannot be tripped by the form alone.",
+          "confidence": "none for a real scan, where neither of those two numbers is known before the step runs. On a generated surface, 5, 10 and 15 recover the same region, which is measured in tests/unit/transforms/test_firing_pin.py rather than asserted here."
+        },
+        "dilation": {
+          "origin": "not-sourced",
+          "where": "two samples at a 4 micrometre sampling interval, chosen so this profile dilates and the reader can see what dilating costs in surface.",
+          "confidence": "none. It is one of the parameters the sensitivity analysis exists to move, and how far the crater wall contaminates the samples beyond the detected edge is not measured anywhere in this tree."
+        }
+      }
+    },
+    {
       "transform": "trim-edge",
       "parameters": {
         "width": 40.0,

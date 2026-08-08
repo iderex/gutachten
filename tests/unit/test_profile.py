@@ -291,7 +291,7 @@ def test_a_setting_written_as_a_number_is_refused(tmp_path: Path) -> None:
 
 def test_a_number_written_as_a_setting_is_refused(tmp_path: Path) -> None:
     data = as_data("every-step")
-    data["steps"][3]["parameters"]["order"] = True
+    data["steps"][4]["parameters"]["order"] = True
 
     with pytest.raises(ProfileError, match="arrives as 0 or 1"):
         load(written(tmp_path, data), REGISTRY)
@@ -303,16 +303,16 @@ def test_a_whole_number_reaches_a_length_as_a_length(tmp_path: Path) -> None:
     # be; carrying it into a float64 pipeline as an int is what is refused
     # everywhere else, so it is converted here and asserted to have been.
     data = as_data("every-step")
-    data["steps"][1]["parameters"]["width"] = 40
+    data["steps"][2]["parameters"]["width"] = 40
 
     profile = load(written(tmp_path, data), REGISTRY)
-    width = profile.steps[1].parameters.width  # type: ignore[attr-defined]
+    width = profile.steps[2].parameters.width  # type: ignore[attr-defined]
     assert isinstance(width, float)
 
 
 def test_a_string_where_a_number_belongs_is_refused(tmp_path: Path) -> None:
     data = as_data("every-step")
-    data["steps"][1]["parameters"]["width"] = "40"
+    data["steps"][2]["parameters"]["width"] = "40"
 
     with pytest.raises(ProfileError, match="width"):
         load(written(tmp_path, data), REGISTRY)
@@ -322,7 +322,7 @@ def test_a_null_the_field_does_not_admit_is_refused(tmp_path: Path) -> None:
     # Absent and unset are different states and the record says which one a
     # field has. A null written into a field that has no null is neither.
     data = as_data("every-step")
-    data["steps"][1]["parameters"]["criterion"] = None
+    data["steps"][2]["parameters"]["criterion"] = None
 
     with pytest.raises(ProfileError, match="null"):
         load(written(tmp_path, data), REGISTRY)
