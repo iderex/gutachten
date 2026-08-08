@@ -12,6 +12,7 @@ gutachten.sweep
 gutachten.synth
 gutachten.transforms
 gutachten.transforms.audit
+gutachten.transforms.bandpass
 gutachten.transforms.base
 gutachten.transforms.edge
 gutachten.transforms.level

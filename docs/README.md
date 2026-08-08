@@ -10,3 +10,6 @@ they do not disagree.
 
 - [determinism.md](determinism.md): what a deterministic run means here, the two
   modes and what each costs, and what this project does not promise.
+- [filtering.md](filtering.md): which part of ISO 16610 the bandpass implements
+  and which part of it does not, what the two cutoffs do, and what handling the
+  missing samples explicitly is worth as a number.
