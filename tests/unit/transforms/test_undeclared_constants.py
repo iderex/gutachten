@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from gutachten.transforms.audit import undeclared_constants
+from gutachten.transforms.audit import undeclared_constants, unregistered_transforms
 from gutachten.transforms.registry import REGISTRY, Registry
 from tests.unit.transforms.declared_example import Scale
 from tests.unit.transforms.undeclared_example import Clip
@@ -157,3 +157,115 @@ def test_the_shipped_steps_declare_every_number_they_use() -> None:
     # above. This test is what starts failing the moment a real step is added
     # with a constant in it.
     assert undeclared_constants(REGISTRY) == []
+
+
+def test_the_shipped_package_holds_no_step_the_registry_does_not() -> None:
+    # The registry is what the manifest resolver, the sweep and the constants
+    # audit all read, so a step that is implemented and not registered is
+    # invisible to three separate obligations at once while still running for
+    # whoever calls it directly. This is what starts failing the moment one is
+    # added without being registered.
+    import gutachten.transforms
+
+    assert unregistered_transforms(gutachten.transforms, REGISTRY) == []
+
+
+def test_a_step_the_registry_does_not_hold_is_found_and_named() -> None:
+    # The fixtures next door are transforms that are deliberately not in the
+    # shipped registry, so pointing the check at their package is the same
+    # situation as a step somebody forgot: it satisfies the interface, it is in
+    # the tree, and the registry has never heard of it.
+    #
+    # The whole list rather than two memberships. Every test module in this
+    # package imports one or both fixtures, so a check that reported a class
+    # where it was imported rather than where it was defined would name the same
+    # two steps five more times each, and a membership assertion would not
+    # notice.
+    import tests.unit.transforms
+
+    found = unregistered_transforms(tests.unit.transforms, Registry())
+
+    assert found == [
+        "tests.unit.transforms.declared_example.Scale",
+        "tests.unit.transforms.undeclared_example.Clip",
+    ]
+
+
+def test_a_step_that_is_registered_is_not_reported() -> None:
+    import tests.unit.transforms
+
+    registry = Registry()
+    registry.register(Scale())
+    registry.register(Clip())
+
+    found = unregistered_transforms(tests.unit.transforms, registry)
+
+    assert "tests.unit.transforms.declared_example.Scale" not in found
+    assert "tests.unit.transforms.undeclared_example.Clip" not in found
+
+
+def test_the_interface_itself_is_not_reported_as_a_step_nobody_registered() -> None:
+    # The protocol declares every member the check looks for, so a check
+    # without the protocol guard reports the definition of a transform as an
+    # unregistered transform, in the package that defines it.
+    import gutachten.transforms.base
+
+    assert unregistered_transforms(gutachten.transforms.base, Registry()) == []
+
+
+# Two steps in one module, defined in the order somebody wrote them rather than
+# the order a reader wants them reported in.
+TWO_STEPS_OUT_OF_ORDER = '''"""Two steps in one file, defined last-first."""
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Parameters:
+    factor: float
+
+
+class Zulu:
+    identifier = "example-zulu"
+    version = "1"
+    parameters_type = Parameters
+    produces = frozenset()
+    requires = frozenset()
+    refuses = frozenset()
+
+    def apply(self, surface, parameters):
+        return surface
+
+
+class Alpha:
+    identifier = "example-alpha"
+    version = "1"
+    parameters_type = Parameters
+    produces = frozenset()
+    requires = frozenset()
+    refuses = frozenset()
+
+    def apply(self, surface, parameters):
+        return surface
+'''
+
+
+def test_the_unregistered_report_is_sorted_rather_than_in_definition_order(
+    tmp_path: Path,
+) -> None:
+    # Definition order is what `vars()` hands back, and it is the order somebody
+    # happened to type the classes in. A report a reader scans has no business
+    # depending on that.
+    path = tmp_path / "two_steps.py"
+    path.write_text(TWO_STEPS_OUT_OF_ORDER, encoding="utf-8")
+    specification = importlib.util.spec_from_file_location("two_steps", path)
+    assert specification is not None and specification.loader is not None
+    module = importlib.util.module_from_spec(specification)
+    sys.modules["two_steps"] = module
+    try:
+        specification.loader.exec_module(module)
+        found = unregistered_transforms(module, Registry())
+    finally:
+        sys.modules.pop("two_steps", None)
+
+    assert found == ["two_steps.Alpha", "two_steps.Zulu"]

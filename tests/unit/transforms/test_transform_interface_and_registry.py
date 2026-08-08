@@ -7,12 +7,19 @@ what separates these from decoration.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 import numpy as np
 import pytest
 
 from gutachten.surface import AxisOrientation, LengthUnit, Surface
-from gutachten.transforms.base import Parameters, Transform, check_parameters, record_for
+from gutachten.transforms.base import (
+    Parameters,
+    SurfaceProperty,
+    Transform,
+    check_parameters,
+    record_for,
+)
 from gutachten.transforms.registry import REGISTRY, Registry
 from tests.unit.transforms.declared_example import Scale, ScaleParameters
 from tests.unit.transforms.undeclared_example import Clip
@@ -176,3 +183,59 @@ def test_the_shipped_registry_holds_no_step_yet_and_this_file_added_none_to_it()
     # into REGISTRY would leak into every test that runs after it, and into the
     # audit over the shipped steps.
     assert REGISTRY.identifiers() == ()
+
+
+def test_a_constraint_written_against_a_string_is_refused_at_registration() -> None:
+    # The near miss the closed vocabulary exists for. A constraint naming
+    # "filterd" never fires, and it fires nowhere in a way nothing notices,
+    # because the chain it should have refused simply runs.
+    class Typo(Scale):
+        identifier = "example-typo"
+        refuses = frozenset({"filterd"})
+
+    with pytest.raises(TypeError, match="not a SurfaceProperty"):
+        Registry().register(Typo())
+
+
+def test_a_declaration_that_is_not_a_frozenset_is_refused() -> None:
+    class Mutable(Scale):
+        identifier = "example-mutable"
+        # Annotated rather than left bare only because a bare mutable class
+        # attribute is itself a lint error, which is the neighbouring defect
+        # and not the one under test here.
+        requires: ClassVar[object] = {SurfaceProperty.LEVELLED}
+
+    with pytest.raises(TypeError, match="declares requires as set"):
+        Registry().register(Mutable())
+
+
+def test_a_step_that_both_requires_and_refuses_a_property_is_refused() -> None:
+    class Impossible(Scale):
+        identifier = "example-impossible"
+        requires = frozenset({SurfaceProperty.FILTERED})
+        refuses = frozenset({SurfaceProperty.FILTERED})
+
+    with pytest.raises(ValueError, match="both requires and refuses"):
+        Registry().register(Impossible())
+
+
+def test_a_step_that_refuses_what_it_then_produces_is_refused() -> None:
+    # Declaring "not after anything filtered" on the filtering step itself
+    # reads as a way to say it runs once. It is not: it makes the step refuse a
+    # chain for a reason its own output created.
+    class SelfRefusing(Scale):
+        identifier = "example-self-refusing"
+        produces = frozenset({SurfaceProperty.FILTERED})
+        refuses = frozenset({SurfaceProperty.FILTERED})
+
+    with pytest.raises(ValueError, match="and then produces it"):
+        Registry().register(SelfRefusing())
+
+
+def test_the_ordering_declarations_are_part_of_the_interface() -> None:
+    scale = Scale()
+
+    assert isinstance(scale, Transform)
+    assert scale.produces == frozenset({SurfaceProperty.LEVELLED})
+    assert scale.requires == frozenset[SurfaceProperty]()
+    assert scale.refuses == frozenset({SurfaceProperty.FILTERED})

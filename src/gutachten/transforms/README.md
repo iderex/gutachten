@@ -81,9 +81,44 @@ changes, and never because a transform changed. A reader meeting an unknown
 schema version refuses it rather than reading the fields it recognises, because a
 partial read of a run record produces a re-run that is not the run.
 
+## A chain in an impossible order is refused rather than run
+
+Masking after a bandpass filter is the case this exists for. The filter spreads
+the masked region into its neighbourhood, so a mask applied afterwards removes a
+region that has already leaked into the surface around it. Nothing crashes, the
+run exits zero, and the surface is wrong in a way that looks like data. A profile
+is a text file somebody edits and a sweep permutes what a profile says, so an
+impossible order is not something that only arrives by misunderstanding.
+
+Each transform declares what it `produces`, what it `requires` and what it
+`refuses`, in the closed vocabulary of `SurfaceProperty`. Closed because a
+constraint written against `"filterd"` never fires, and it fires nowhere in a way
+nothing notices, since the chain it should have refused simply runs.
+
+The declarations name properties rather than other transforms. A constraint
+saying "not after `bandpass`" is escaped by the second filtering step somebody
+adds; one saying "not after anything that has filtered the surface" is not.
+
+`pipeline.py` carries the properties forward through a chain along with the
+identifier of the step that established each, which is what lets a refusal name
+both transforms. It checks the whole chain, including the parameter record types,
+before the first step touches a surface, so a chain wrong in its fifth step fails
+before four steps of work have produced an intermediate somebody will save.
+
+## An implemented step that nobody registered
+
+The registry is read by the manifest resolver, by the sweep and by the constants
+audit, so a step that exists and is not registered is invisible to three
+obligations at once while still running for whoever calls it directly.
+`unregistered_transforms` in `audit.py` imports a package, finds the classes
+satisfying the interface and reports those the registry does not hold. It reads
+the interface rather than a naming convention. What it cannot see is a step
+defined outside the package it is pointed at.
+
 ## What is not decided here
 
-The registry holds identifiers and refuses what cannot be recorded. The ordering
-constraints between steps, and the pipeline that runs a chain, are
-[#49](https://github.com/iderex/gutachten/issues/49). The steps themselves are
-the issues that follow it. Nothing in this directory knows what a striation is.
+Writing a manifest at the end of a run and re-running from one is
+[#51](https://github.com/iderex/gutachten/issues/51). Refusing an
+under-specified parameter set against a profile is
+[#53](https://github.com/iderex/gutachten/issues/53). The steps themselves are
+the issues that follow. Nothing in this directory knows what a striation is.

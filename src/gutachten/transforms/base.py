@@ -51,16 +51,41 @@ nothing that knows what a striation is.
 from __future__ import annotations
 
 import dataclasses
+from enum import Enum
 from typing import Protocol, runtime_checkable
 
 from gutachten.surface import Surface, TransformRecord
 
 __all__ = [
     "Parameters",
+    "SurfaceProperty",
     "Transform",
+    "check_ordering",
     "check_parameters",
     "record_for",
 ]
+
+
+class SurfaceProperty(Enum):
+    """What a step leaves behind, in the vocabulary the ordering rules speak.
+
+    A closed vocabulary rather than free strings. A constraint written against
+    ``"filterd"`` is a constraint that never fires, and it fires nowhere in a
+    way no test notices, because a chain that should have been refused simply
+    runs. An enum makes that a failure at registration and at type check time
+    instead.
+
+    The members are the properties the preprocessing steps in this plan
+    establish. It grows when a step establishes something the existing members
+    do not describe, which is a change to this file rather than a string typed
+    at the call site.
+    """
+
+    EDGES_TRIMMED = "edges-trimmed"
+    MASKED = "masked"
+    OUTLIERS_MARKED = "outliers-marked"
+    LEVELLED = "levelled"
+    FILTERED = "filtered"
 
 
 @runtime_checkable
@@ -83,6 +108,19 @@ class Transform(Protocol):
     ``identifier`` is what a manifest and a profile name the step by, and it is
     stable across versions: a run recorded against ``level`` is a run of the
     levelling step whichever version produced it.
+
+    The last three say what the step needs of the surface it is handed, so that
+    a chain in an impossible order is refused rather than producing a quietly
+    wrong surface. They are declared against properties rather than against
+    other transforms' identifiers, because masking has to come before filtering
+    whichever step did the filtering, and a constraint naming one identifier is
+    a constraint the second filtering step silently escapes.
+
+    ``produces`` is what the surface carries afterwards. ``requires`` is what it
+    must carry already. ``refuses`` is what it must not: masking after a
+    bandpass filter is the case this exists for, because the filter spreads the
+    masked region into its neighbourhood and the mask then removes the wrong
+    thing while the run exits zero.
     """
 
     @property
@@ -93,6 +131,15 @@ class Transform(Protocol):
 
     @property
     def parameters_type(self) -> type: ...
+
+    @property
+    def produces(self) -> frozenset[SurfaceProperty]: ...
+
+    @property
+    def requires(self) -> frozenset[SurfaceProperty]: ...
+
+    @property
+    def refuses(self) -> frozenset[SurfaceProperty]: ...
 
     def apply(self, surface: Surface, parameters: Parameters) -> Surface: ...
 
@@ -137,6 +184,50 @@ def check_parameters(parameters_type: type) -> None:
             f"{parameters_type.__name__} declares no parameters at all. A step with "
             "nothing to vary is not a step this pipeline can be held to; say so with a "
             "field rather than with an empty record."
+        )
+
+
+def check_ordering(transform: Transform) -> None:
+    """Refuse an ordering declaration that could never do what it says.
+
+    Called at registration, for the same reason ``check_parameters`` is: a
+    constraint that cannot fire is invisible until a chain that should have been
+    refused produces a number, and by then the number is in a report.
+    """
+    declarations = {
+        "produces": transform.produces,
+        "requires": transform.requires,
+        "refuses": transform.refuses,
+    }
+    for name, declared in declarations.items():
+        if not isinstance(declared, frozenset):
+            raise TypeError(
+                f"transform {transform.identifier!r} declares {name} as "
+                f"{type(declared).__name__}. It has to be a frozenset, so that a "
+                "declaration cannot be added to after registration."
+            )
+        wrong = [item for item in declared if not isinstance(item, SurfaceProperty)]
+        if wrong:
+            raise TypeError(
+                f"transform {transform.identifier!r} names {wrong} in {name}, which is "
+                "not a SurfaceProperty. A constraint written against a string never "
+                "fires and nothing notices, because the chain it should have refused "
+                "simply runs."
+            )
+
+    both = sorted(item.value for item in transform.requires & transform.refuses)
+    if both:
+        raise ValueError(
+            f"transform {transform.identifier!r} both requires and refuses {both}, so no "
+            "chain can satisfy it and the step can never run."
+        )
+
+    already = sorted(item.value for item in transform.produces & transform.refuses)
+    if already:
+        raise ValueError(
+            f"transform {transform.identifier!r} refuses {already} and then produces it, "
+            "so running it twice is refused for a reason its own output created. Say "
+            "what it needs of the surface it is handed, not what it leaves behind."
         )
 
 

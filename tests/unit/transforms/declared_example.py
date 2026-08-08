@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from gutachten.surface import Surface
-from gutachten.transforms.base import record_for
+from gutachten.transforms.base import SurfaceProperty, record_for
 
 
 @dataclass(frozen=True)
@@ -31,6 +31,9 @@ class Scale:
     identifier = "example-scale"
     version = "1"
     parameters_type = ScaleParameters
+    produces = frozenset({SurfaceProperty.LEVELLED})
+    requires = frozenset[SurfaceProperty]()
+    refuses = frozenset({SurfaceProperty.FILTERED})
 
     def apply(self, surface: Surface, parameters: ScaleParameters) -> Surface:
         heights = surface.heights * parameters.factor
