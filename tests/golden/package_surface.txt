@@ -17,6 +17,7 @@ gutachten.transforms.audit
 gutachten.transforms.bandpass
 gutachten.transforms.base
 gutachten.transforms.edge
+gutachten.transforms.firing_pin
 gutachten.transforms.level
 gutachten.transforms.marks
 gutachten.transforms.outliers
