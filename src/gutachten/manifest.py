@@ -38,28 +38,60 @@ It does not move when a transform changes; that is the transform's own version,
 in its step record. The two are separate on purpose. A levelling step whose
 output changed is a different procedure recorded in the same schema.
 
+## The serialisation, and why it is shaped for a reader
+
+JSON, indented, one value to a line, in the order the schema decides rather than
+alphabetically. Two manifests from two runs should differ only where the runs
+differ, and a reader comparing them by eye is the most common way a difference
+will actually be found. One value to a line is what makes two runs differing in
+one parameter produce manifests differing in one line.
+
+Sorted where the container is unordered, and only there. Every mapping the
+schema emits comes out in sorted key order, because iteration order over an
+unordered container is a run-to-run difference nobody chose. The steps are a
+sequence and keep the order they ran in, because levelling then filtering is a
+different procedure from filtering then levelling.
+
+## Re-running from one, and what is refused on the way
+
+``resolve`` turns a manifest back into a chain the pipeline can run. It looks
+each identifier up in the registry and compares the recorded version against the
+registered one. A manifest naming a version that is no longer in the tree is
+refused with both versions named, rather than run against the current step,
+because silently substituting a newer step turns a reproduction into a different
+experiment carrying the same label.
+
+The parameter records are rebuilt from what the manifest recorded, not from the
+profile the run used. A run that overrode one parameter is a run the profile does
+not describe, and re-reading the profile would reproduce the run somebody meant
+rather than the one that happened.
+
 ## What is here and what is not
 
-This module holds the schema and nothing else: the records, their refusals, and a
-stable serialisation. Writing a manifest at the end of a run and re-running from
-one is #51. The stamp identifying the build is #29 and lands in
-``EnvironmentRecord`` when it exists. The registry a step identifier resolves
-against is ``gutachten.transforms.registry``.
-
-Serialisation sorts every mapping it emits. Iteration order over an unordered
-container is a run-to-run difference nobody chose, and a manifest that is the
-authority for whether two runs were the same has no business differing in the
-order of its own keys.
+The stamp identifying the build is #29 and lands in ``EnvironmentRecord`` when it
+exists. The content addressed cache an input hash would be looked up in is #41,
+so ``rerun`` is handed the surface rather than fetching it. The registry an
+identifier resolves against is ``gutachten.transforms.registry``.
 """
 
 from __future__ import annotations
 
+import dataclasses
+import hashlib
+import io
+import json
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
-from gutachten.determinism import DeterminismRecord
-from gutachten.surface import ParameterValue
+import numpy as np
+
+from gutachten.determinism import DeterminismRecord, RunMode
+from gutachten.surface import ParameterValue, Surface
+from gutachten.transforms.pipeline import Step, run_chain
+from gutachten.transforms.registry import Registry
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -68,6 +100,13 @@ __all__ = [
     "ProfileRecord",
     "RunManifest",
     "StepRecord",
+    "VersionMismatch",
+    "from_dict",
+    "read",
+    "record_run",
+    "rerun",
+    "resolve",
+    "surface_digest",
 ]
 
 #: Moves when the meaning of a field changes, not when a transform does. Moved
@@ -243,3 +282,213 @@ class RunManifest:
             "environment": self.environment.to_dict(),
             "outputs": [record.to_dict() for record in self.outputs],
         }
+
+    def to_text(self) -> str:
+        """The manifest as the text a run writes and a reader diffs.
+
+        ``sort_keys`` is off deliberately. The schema decides the order of its
+        own keys, and sorting here would hide a schema that had stopped deciding
+        it. What is sorted is what came out of an unordered container, and that
+        happens in ``to_dict`` where the container is.
+        """
+        return json.dumps(self.to_dict(), indent=2, sort_keys=False) + "\n"
+
+    def write(self, path: Path) -> None:
+        """Write the manifest, with the line endings a diff across platforms needs."""
+        path.write_text(self.to_text(), encoding="utf-8", newline="\n")
+
+
+class VersionMismatch(Exception):
+    """A manifest names a transform version the tree no longer holds."""
+
+
+REQUIRED_FIELDS = frozenset(
+    {
+        "schema_version",
+        "inputs",
+        "profile",
+        "steps",
+        "seed",
+        "determinism",
+        "environment",
+        "outputs",
+    }
+)
+
+
+def _file_record(data: Mapping[str, Any]) -> FileRecord:
+    return FileRecord(role=str(data["role"]), sha256=str(data["sha256"]))
+
+
+def from_dict(data: Mapping[str, Any]) -> RunManifest:
+    """Rebuild a manifest from plain data, refusing one this code cannot read whole.
+
+    Every field is taken from the data rather than defaulted. A field a reader
+    supplies for itself is a field the manifest did not have to record, and the
+    whole point of the schema is that it records all of them.
+    """
+    missing = sorted(REQUIRED_FIELDS - set(data))
+    if missing:
+        raise ValueError(
+            f"a manifest is missing {missing}. Filling those in here would produce a "
+            "re-run that is not the run, which is the failure the schema version exists "
+            "to make visible."
+        )
+
+    determinism = data["determinism"]
+    environment = data["environment"]
+    return RunManifest(
+        schema_version=int(data["schema_version"]),
+        inputs=tuple(_file_record(item) for item in data["inputs"]),
+        profile=ProfileRecord(
+            name=str(data["profile"]["name"]), version=str(data["profile"]["version"])
+        ),
+        steps=tuple(
+            StepRecord(
+                identifier=str(step["identifier"]),
+                version=str(step["version"]),
+                parameters=tuple(sorted(step["parameters"].items())),
+            )
+            for step in data["steps"]
+        ),
+        seed=int(data["seed"]),
+        determinism=DeterminismRecord(
+            mode=RunMode(determinism["mode"]), threads=determinism["threads"]
+        ),
+        environment=EnvironmentRecord(
+            software_version=str(environment["software_version"]),
+            dependencies=tuple(sorted(environment["dependencies"].items())),
+        ),
+        outputs=tuple(_file_record(item) for item in data["outputs"]),
+    )
+
+
+def read(path: Path) -> RunManifest:
+    """Read a manifest, refusing one this code cannot read whole."""
+    parsed: Any = json.loads(path.read_text(encoding="utf-8"))
+    return from_dict(parsed)
+
+
+def surface_digest(surface: Surface) -> str:
+    """The sha256 of a surface's heights, in a byte form that does not drift.
+
+    ``numpy.save`` rather than ``tobytes``, because the header carries the dtype
+    and the shape. Two arrays with the same bytes and different shapes are not
+    the same output, and a digest that could not tell them apart would call a
+    transposed result a reproduction.
+    """
+    buffer = io.BytesIO()
+    np.save(buffer, np.ascontiguousarray(surface.heights), allow_pickle=False)
+    return hashlib.sha256(buffer.getvalue()).hexdigest()
+
+
+def resolve(manifest: RunManifest, registry: Registry) -> list[Step]:
+    """Turn a manifest back into a chain, refusing a step the tree has moved on from.
+
+    The parameter records are rebuilt from what the manifest recorded rather
+    than from the profile it names. A run that overrode a parameter is a run the
+    profile does not describe, and re-reading the profile would reproduce the
+    run somebody meant instead of the one that happened.
+    """
+    chain: list[Step] = []
+    for record in manifest.steps:
+        transform = registry[record.identifier]
+        if transform.version != record.version:
+            raise VersionMismatch(
+                f"the manifest names {record.identifier!r} at version {record.version!r} "
+                f"and this tree holds version {transform.version!r}. Running the current "
+                "step would make this a different experiment carrying the same label. "
+                "Check out the tree that held the recorded version, or record this as a "
+                "new run."
+            )
+        recorded = dict(record.parameters)
+        declared = {field.name for field in dataclasses.fields(transform.parameters_type)}
+        if declared != set(recorded):
+            raise ValueError(
+                f"the manifest records {sorted(recorded)} for {record.identifier!r}, and "
+                f"the version {record.version!r} in this tree takes {sorted(declared)}. A "
+                "step whose parameters changed without its version changing is what this "
+                "compares against."
+            )
+        chain.append(
+            Step(
+                identifier=record.identifier,
+                parameters=transform.parameters_type(**recorded),
+            )
+        )
+    return chain
+
+
+def record_run(
+    role: str,
+    surface: Surface,
+    profile: ProfileRecord,
+    chain: Sequence[Step],
+    registry: Registry,
+    seed: int,
+    determinism: DeterminismRecord,
+    environment: EnvironmentRecord,
+) -> tuple[Surface, RunManifest]:
+    """Run a chain and return what it produced together with the manifest of it.
+
+    The manifest is built from what ran rather than from what was asked for. The
+    versions come off the registered transforms and the parameters off the
+    records that were handed to them, so a manifest cannot describe a run that
+    did not happen.
+    """
+    result = run_chain(chain, registry, surface)
+
+    steps = tuple(
+        StepRecord(
+            identifier=step.identifier,
+            version=registry[step.identifier].version,
+            parameters=tuple(
+                sorted(
+                    (field.name, getattr(step.parameters, field.name))
+                    for field in dataclasses.fields(step.parameters)  # type: ignore[arg-type]
+                )
+            ),
+        )
+        for step in chain
+    )
+
+    manifest = RunManifest(
+        inputs=(FileRecord(role=role, sha256=surface_digest(surface)),),
+        profile=profile,
+        steps=steps,
+        seed=seed,
+        determinism=determinism,
+        environment=environment,
+        outputs=(FileRecord(role="surface", sha256=surface_digest(result)),),
+    )
+    return result, manifest
+
+
+def rerun(manifest: RunManifest, registry: Registry, surface: Surface) -> Surface:
+    """Run the chain a manifest recorded, refusing a result that is not the recorded one.
+
+    ``surface`` is handed in rather than fetched. A manifest names its inputs by
+    hash and the content addressed cache those hashes are looked up in is #41.
+    What can be checked today is that the surface handed in is the one the
+    manifest names, and that is checked.
+    """
+    digest = surface_digest(surface)
+    named = [record.sha256 for record in manifest.inputs]
+    if digest not in named:
+        raise ValueError(
+            f"the surface handed in hashes to {digest} and the manifest names {named}. "
+            "Re-running a recorded chain against a different input produces a number "
+            "under a label saying it came from another one."
+        )
+
+    result = run_chain(resolve(manifest, registry), registry, surface)
+
+    produced = surface_digest(result)
+    expected = [record.sha256 for record in manifest.outputs]
+    if produced not in expected:
+        raise ValueError(
+            f"the re-run produced {produced} and the manifest recorded {expected}. The "
+            "chain, the parameters and the input all matched, so what moved is the code "
+            "behind a step whose version did not."
+        )
+    return result
