@@ -1,0 +1,78 @@
+# The suite run under the conditions the rule names, rather than under a suite
+# that has agreed not to break them.
+#
+# `tests/conftest.py` refuses the doors a network is reached through from inside
+# the process. That proves the suite does not try. It cannot prove the suite
+# would still pass on a machine where trying is impossible, and those are the
+# two different statements the rule keeps apart: one is about the code, the
+# other is about the laboratory the code has to run in. This job is the second
+# one. It builds an image with the dependencies already installed, then runs the
+# suite in a container with no route out, no display, and a user that is not
+# root and cannot become one.
+#
+# It runs on every pull request rather than once, because a measurement taken
+# once decays into a sentence. The environment probe runs first under identical
+# flags, so a run that lost one of the three conditions fails saying which,
+# instead of passing and being read as proof of all three.
+#
+# Same posture as the other workflows here: every action pinned to a commit with
+# the version in a comment, checkout without persisted credentials, permissions
+# denied at the top level and granted per job. The two container images are
+# pinned by digest in .github/gate.Dockerfile for the same reason.
+name: Container gate
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main]
+
+# Explicit deny-all at workflow level; the job below grants only what it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  container:
+    # Fixed here for the same reason the other check names are: a check renamed
+    # later drops silently out of a required set, and the merge it was
+    # protecting goes through green.
+    name: container
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      # Written once and used by both steps below. Two copies of this list would
+      # let the environment the probe describes drift away from the environment
+      # the suite runs in, which would leave the probe reporting on a container
+      # nobody ran anything in.
+      CONTAINED: >-
+        --rm
+        --network none
+        --user 65534:65534
+        --cap-drop ALL
+        --security-opt no-new-privileges
+        --env HOME=/tmp
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the image, with the network still available
+        # The install happens here and only here. Everything after this point
+        # runs with no route out, which is what makes the run below evidence.
+        run: docker build --file .github/gate.Dockerfile --tag gutachten-gate .
+
+      - name: Show the container has the conditions this job claims
+        # Word splitting on CONTAINED is intended: it is a list of flags.
+        # shellcheck disable=SC2086
+        run: docker run $CONTAINED gutachten-gate python /src/.github/container_environment.py
+
+      - name: Run the suite there
+        # shellcheck disable=SC2086
+        run: docker run $CONTAINED gutachten-gate
