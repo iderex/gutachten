@@ -49,6 +49,9 @@ dev = [
     "pytest-cov>=6.0,<8",
     # MPL-2.0, copyleft, test-time only. Property tests over generated inputs.
     "hypothesis>=6.112,<7",
+    # PROBE, reverted in the next commit: a dependency added without relocking,
+    # so the manifest and the lockfile disagree.
+    "iniconfig>=2.0,<3",
 ]
 
 [build-system]
