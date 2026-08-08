@@ -1,0 +1,66 @@
+# Pull request hygiene, in two tiers. The rules and the reason each one exists
+# are in .github/pr_hygiene.py, and the check prints them where they fire rather
+# than pointing at an issue nobody has open.
+#
+# Three of the rules transfer from anywhere. Two are about what has to move
+# together in this tree and are the reason this is a check at all: a parameter
+# added to a transform and not added to the profiles, and a manifest schema
+# whose meaning moved while its version did not. Both are silent. Nothing
+# crashes and the suite goes green.
+#
+# The logic is a Python file rather than shell inside this workflow. Enforcement
+# written as shell in a YAML block is enforcement in a language this repository
+# has no suite for, and the rules here are proved against constructed near
+# misses in tests/unit/test_pr_hygiene.py, which the gate already runs.
+#
+# It runs on pull requests only. There is no range to read on a push to a
+# branch, and a check that invented one would be judging something other than
+# the change under review.
+#
+# Same posture as the other workflows here: every action pinned to a commit with
+# the version in a comment, checkout without persisted credentials, permissions
+# denied at the top level and granted per job.
+name: Pull request hygiene
+
+on:
+  pull_request:
+    branches: ["**"]
+
+# Explicit deny-all at workflow level; the job below grants only what it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hygiene:
+    # Fixed here for the same reason the other check names are: a check renamed
+    # later drops silently out of a required set, and the merge it was
+    # protecting goes through green.
+    name: pull request hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The whole history, because the rules read a range and the content of
+          # files on both sides of it. A shallow clone would make them read
+          # nothing, and a rule that reads nothing is the one failure mode this
+          # check refuses rather than passes on.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Read the change
+        env:
+          # Through the environment rather than into the command line. A title
+          # or a body is text somebody else wrote, and interpolating it into a
+          # shell is how that text becomes a command.
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 .github/pr_hygiene.py
