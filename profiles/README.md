@@ -24,6 +24,14 @@ given.
 The file name and the recorded name have to agree, because a profile is selected
 by one and found by the other.
 
+Every step this tree registers is named by at least one profile here, and the
+suite refuses a registered step that none of them runs. That is what makes a
+parameter added to a step red the build: the profiles resolve every step, so a
+new field is a field some file in this directory does not set, and the reader
+above refuses it with the step, the field and the profile named. A step no
+profile runs would escape that, because nothing would ever resolve its record
+against a file. `every-step` is the chain that exists to keep the set covered.
+
 ## Where a value came from
 
 Every parameter carries three fields. `origin` is one of three words and nothing
