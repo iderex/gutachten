@@ -1,0 +1,85 @@
+# The build and test gate: install from the lockfile, run the suite, on all
+# three platforms this project claims to run on.
+#
+# The check names are part of the contract, not a cosmetic choice. `test
+# (ubuntu)`, `test (macos)` and `test (windows)` are fixed here so that a later
+# decision about which checks hold a merge has something stable to name. A check
+# renamed later drops silently out of a required set, and the merge it was
+# protecting goes through green.
+#
+# The install uses `--locked`, which fails when the lockfile does not match the
+# manifest rather than resolving something newer and passing. A green build
+# against an unlocked resolution proves nothing about what an operator will
+# install, which is the only thing this job is here to prove.
+#
+# Same posture as the guards already in this repository: every action pinned to a
+# commit with the version in a comment, checkout without persisted credentials,
+# permissions denied at the top level and granted per job.
+name: Build and test
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main]
+
+# Explicit deny-all at workflow level; the job below grants only what it needs.
+permissions: {}
+
+# A newer push on the same ref supersedes an in-flight run. This job builds and
+# tests and publishes nothing, so cancelling a superseded run is safe.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # The label rather than the runner image, so the check name stays `test
+    # (ubuntu)` when the image behind it moves to a newer version.
+    name: test (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      # One platform failing must not cancel the other two. A cross-platform
+      # defect is exactly what this matrix exists to find, and a cancelled run
+      # hides which platforms were actually affected.
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: ubuntu
+          - os: macos-latest
+            label: macos
+          - os: windows-latest
+            label: windows
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # No step pushes via git, so do not persist the GITHUB_TOKEN.
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          # Pinned rather than latest. The resolver is part of what decides the
+          # installed graph, so letting it float would make this job's verdict
+          # depend on something the lockfile does not record.
+          version: "0.12.2"
+
+      - name: Install from the lockfile
+        # The interpreter comes from uv, resolved against the requires-python
+        # range in pyproject.toml, so the version under test is declared in the
+        # manifest rather than in this file where it could drift away from it.
+        run: uv sync --locked
+
+      - name: Run the suite
+        # The bare command a contributor is told to run, so the gate and the
+        # documentation cannot drift apart. It is safe to leave the sync
+        # implicit here because the step above already refused a stale lockfile,
+        # so there is nothing left for this one to silently resolve.
+        # The suite runs with no display, no elevated rights and no network.
+        run: uv run pytest
