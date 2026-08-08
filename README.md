@@ -6,4 +6,22 @@ Planning happens on the issue tracker first. Every decision that shapes
 the architecture is written down there with its reasons before the code
 that depends on it exists.
 
-See [NOTICE.md](NOTICE.md) for the intended-use notice.
+## Running it
+
+Nothing is released yet and there is no operator command. What exists is a tree
+you can install and test:
+
+```
+uv sync --locked
+uv run pytest
+```
+
+[CONTRIBUTING.md](CONTRIBUTING.md) is the full version of that, starting from a
+machine with nothing installed, and it also says what to run before pushing.
+
+This repository has no license file. Until one is chosen, default copyright
+applies, which means it cannot lawfully be used, forked or modified. That is a
+question for the maintainer and it is open.
+
+See [SECURITY.md](SECURITY.md) for what to report privately and what to report in
+the open, and [NOTICE.md](NOTICE.md) for the intended-use notice.
