@@ -1,0 +1,66 @@
+# Formatting, linting and type checking, as one check named `lint`.
+#
+# The name is fixed here for the same reason the build check names are: a check
+# renamed later drops silently out of a required set, and the merge it was
+# protecting goes through green.
+#
+# Formatting runs in check mode and never rewrites anything here. A workflow
+# that pushes a formatting commit is a workflow with write access to the branch,
+# which is a far larger surface than the problem it solves.
+#
+# The three commands below are the same strings CONTRIBUTING.md tells a
+# contributor to run before pushing. If one of them changes, both places change
+# together, because a documented command that differs from the gated one is
+# worse than no documentation at all.
+name: Lint
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main]
+
+# Explicit deny-all at workflow level; the job below grants only what it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint
+    # One platform. Formatting, lint rules and type checking read the same
+    # source bytes everywhere, and the line endings in the tree are fixed by
+    # .gitattributes rather than by the runner, so a second platform would
+    # re-run identical work.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.2"
+
+      - name: Install from the lockfile
+        run: uv sync --locked
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check
+        # src/ only. The suite is checked by running it, and holding test code
+        # to strict typing buys argument about fixtures rather than correctness
+        # in the part of the tree that produces numbers.
+        run: uv run mypy src

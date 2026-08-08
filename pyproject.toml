@@ -49,6 +49,11 @@ dev = [
     "pytest-cov>=6.0,<8",
     # MPL-2.0, copyleft, test-time only. Property tests over generated inputs.
     "hypothesis>=6.112,<7",
+    # MIT. Formatter and linter in one tool, so a contributor is never caught
+    # between two that disagree.
+    "ruff>=0.8,<1",
+    # MIT. Static types over src/, in strict mode.
+    "mypy>=1.13,<2",
 ]
 
 [build-system]
@@ -99,6 +104,47 @@ addopts = [
     "--cov-fail-under=90",
 ]
 filterwarnings = ["error"]
+
+[tool.ruff]
+# One tool for formatting and linting, with one configuration, so the class of
+# argument where the formatter and the linter disagree and a contributor is
+# caught between them does not exist here.
+line-length = 100
+target-version = "py312"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # import sorting
+    "B",    # likely bugs
+    "UP",   # outdated idioms
+    "SIM",  # needless complexity
+    "RUF",  # ruff's own rules
+    "NPY",  # numpy-specific rules, which is most of this codebase
+]
+
+[tool.mypy]
+# Strict over src/, because the values passed around here are arrays with units
+# and an orientation convention attached, and the most expensive error available
+# in this project is a millimetre treated as a micrometre. Types will not catch
+# all of that. They catch the cheap half, and the cheap half is still the half
+# that reaches a report.
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+# A dependency without type information is reported rather than silently
+# accepted, so the tree knows which of its edges are unchecked.
+disallow_any_unimported = true
+
+[[tool.mypy.overrides]]
+# These ship no type information, or ship it partially. Named here one by one
+# rather than switched off globally, so adding a new untyped dependency is a
+# decision somebody makes rather than one this file already made for them.
+module = ["scipy.*", "skimage.*", "statsmodels.*", "matplotlib.*"]
+ignore_missing_imports = true
 
 [tool.coverage.run]
 branch = true
