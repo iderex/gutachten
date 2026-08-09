@@ -352,3 +352,35 @@ def test_a_manifest_naming_no_subject_cannot_be_re_run(design: Design, tmp_path:
     subject, reference = surfaces(design, cell.pair)
     with pytest.raises(SweepError, match="no input in the role"):
         rerun_cell(tmp_path, cell.identifier, REGISTRY, subject, reference)
+
+
+EXCLUSION = Path(__file__).resolve().parent / "exclusion.json"
+
+
+def test_the_drag_mark_exclusion_is_enumerated_by_the_sweep(tmp_path: Path) -> None:
+    """The clause #57 stayed open on, over the chain that actually masks.
+
+    Excluding the drag mark is what the published chains do and it is a choice
+    rather than a fact, so the whole point of the step is that not excluding it
+    is a configuration a sweep can visit rather than a code change. Nothing
+    enumerated anything until now, and a setting nothing enumerates is a setting
+    the sensitivity report cannot say what costs.
+
+    That the two configurations reach different scores is asserted because a
+    runner that recorded the setting and never applied it would pass every other
+    check here. Which of them scores higher is not a result: it is one generated
+    pair under one configuration, and the design is a fixture.
+    """
+    design = load(EXCLUSION, REGISTRY, load_ranges(ROOT / "docs" / "ranges.json"))
+    assert [varied.parameter for varied in design.varied] == ["mask-marks.exclude_drag"]
+
+    report = run(design, REGISTRY, tmp_path, REFERENCE, ENVIRONMENT, workers=1)
+    visited = {row.assignment[0][1]: row for row in report.rows}
+    assert set(visited) == {True, False}
+
+    for value, row in visited.items():
+        manifest = read(tmp_path / CELLS / f"{row.cell}.manifest.json")
+        recorded = {step.identifier: dict(step.parameters) for step in manifest.steps}
+        assert recorded["mask-marks"]["exclude_drag"] is value
+
+    assert visited[True].congruent != visited[False].congruent
