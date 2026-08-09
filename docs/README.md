@@ -13,3 +13,6 @@ they do not disagree.
 - [filtering.md](filtering.md): which part of ISO 16610 the bandpass implements
   and which part of it does not, what the two cutoffs do, and what handling the
   missing samples explicitly is worth as a number.
+- [registration.md](registration.md): what the search over translation and
+  rotation does, what its four settings decide, and what one search costs in
+  correlations and in seconds.
