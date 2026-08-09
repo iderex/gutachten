@@ -1,0 +1,218 @@
+{
+  "name": "joint-space",
+  "version": "1",
+  "estimator": "sobol-saltelli",
+  "indices": [
+    "first-order",
+    "total-order"
+  ],
+  "interval": {
+    "method": "bootstrap-over-sources",
+    "resamples": 1000,
+    "level": 0.95
+  },
+  "base_samples": 64,
+  "null_share": 0.5,
+  "field": {
+    "rows": 384,
+    "columns": 384,
+    "pixel_spacing_um": 4.0
+  },
+  "pairs": {
+    "matching": 8,
+    "non-matching": 8
+  },
+  "cost": {
+    "seconds_per_cell_at_the_base": 14.43,
+    "mean_correlations_over_the_declared_ranges": 1285.9,
+    "correlations_at_the_base": 396,
+    "model_under_prediction": 1.0867,
+    "mean_seconds_per_cell": 50.92,
+    "budget_days": 30
+  },
+  "coordinates": [
+    {
+      "parameter": "trim-edge.width",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "trim-edge.criterion",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "level.model",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "level.order",
+      "mapping": "controlled",
+      "by": "level.model",
+      "why": "the plane and sphere models have no order and refuse one; the polynomial model refuses its absence"
+    },
+    {
+      "parameter": "level.robust_tuning",
+      "mapping": "controlled",
+      "by": "level.robust_passes",
+      "why": "a robust fit states both and an ordinary least squares fit states neither"
+    },
+    {
+      "parameter": "level.robust_passes",
+      "mapping": "mode-split",
+      "why": "whether the levelling fit is robust at all, which is one of the two modes being compared"
+    },
+    {
+      "parameter": "bandpass.short_cutoff",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "bandpass.long_cutoff",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "bandpass.robust_tuning",
+      "mapping": "controlled",
+      "by": "bandpass.robust_passes",
+      "why": "a robust fit states both and an ordinary least squares fit states neither"
+    },
+    {
+      "parameter": "bandpass.robust_passes",
+      "mapping": "mode-split",
+      "why": "whether the filter is robust at all, which is one of the two modes being compared"
+    },
+    {
+      "parameter": "mask-firing-pin.method",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "mask-firing-pin.declared_centre_y",
+      "mapping": "controlled",
+      "by": "mask-firing-pin.method",
+      "why": "the fixed method needs a declared region and the detected method refuses one"
+    },
+    {
+      "parameter": "mask-firing-pin.declared_centre_x",
+      "mapping": "controlled",
+      "by": "mask-firing-pin.method",
+      "why": "the fixed method needs a declared region and the detected method refuses one"
+    },
+    {
+      "parameter": "mask-firing-pin.declared_radius",
+      "mapping": "controlled",
+      "by": "mask-firing-pin.method",
+      "why": "the fixed method needs a declared region and the detected method refuses one"
+    },
+    {
+      "parameter": "mask-firing-pin.depth_threshold",
+      "mapping": "controlled",
+      "by": "mask-firing-pin.method",
+      "why": "the detected method needs a depth to detect against and the fixed method refuses one"
+    },
+    {
+      "parameter": "mask-firing-pin.dilation",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "mask-marks.drag_width",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "mask-marks.drag_position",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "mask-marks.drag_angle_deg",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "mask-marks.exclude_drag",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "mask-marks.extractor_radius",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "mask-marks.extractor_distance",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "mask-marks.extractor_angle_deg",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "mask-marks.exclude_extractor",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "reject-outliers.criterion",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "reject-outliers.threshold",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "reject-outliers.neighbourhood",
+      "mapping": "mode-split",
+      "why": "whether the criterion is evaluated locally or over the whole surface"
+    },
+    {
+      "parameter": "compare.register.grid",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "compare.register.minimum_valid",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "compare.register.rotation_range_deg",
+      "mapping": "snapped",
+      "by": "compare.register.rotation_step_deg",
+      "why": "the search refuses a step that does not divide the range, so the drawn range is rounded to the nearest whole number of steps and held inside its declared bound"
+    },
+    {
+      "parameter": "compare.register.rotation_step_deg",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "compare.register.translation_limit",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "compare.cmc.down_threshold",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "compare.cmc.across_threshold",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "compare.cmc.rotation_threshold_deg",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "compare.cmc.correlation_threshold",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "compare.cmc.consensus",
+      "mapping": "direct"
+    },
+    {
+      "parameter": "compare.cmc.translation_bin",
+      "mapping": "controlled",
+      "by": "compare.cmc.consensus",
+      "why": "only the histogram mode consensus has bins to set"
+    },
+    {
+      "parameter": "compare.cmc.rotation_bin_deg",
+      "mapping": "controlled",
+      "by": "compare.cmc.consensus",
+      "why": "only the histogram mode consensus has bins to set"
+    },
+    {
+      "parameter": "compare.cmc.high_tolerance",
+      "mapping": "direct"
+    }
+  ]
+}
