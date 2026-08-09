@@ -61,6 +61,43 @@ number discarded and they are not meant to. What they are for is saying which
 condition is doing the work, which is the first thing a sweep over these four
 numbers has to answer.
 
+## The high variant, and how it differs
+
+The variant reads the count of agreeing cells as a function of orientation
+instead of picking one consensus orientation and judging every cell against it.
+For each orientation the search visited, the cells that best match there are
+judged against that orientation's own displacement consensus; the busiest
+orientation sets a peak; every orientation within a declared number of cells of
+that peak is kept; and the score is how many distinct cells agreed at any of
+them.
+
+What it is for is the case where the consensus is poorly determined. Two nearly
+equal peaks make the single-consensus rule a coin toss between them, and the
+cells at the losing orientation are discarded for having agreed with each other
+at the wrong angle. The variant keeps both.
+
+Its parameter set is not the original four plus extras. It reads three of them,
+and it has no rotation threshold at all, because within one orientation every
+cell carries that orientation and a threshold on it would compare each cell
+against itself. What the original rule does with a threshold, this one does with
+the shape of the distribution. That is a finding about the two rules rather than
+a simplification of one.
+
+Both rules run off one registration, which is what makes the comparison between
+them a comparison of decision rules rather than of two pipelines. Where they
+disagree, `disagreements` names the cells rather than the difference of two
+totals: two rules reaching the same count out of different cells have not
+agreed, and a subtraction reports that as agreement.
+
+**Where this departs from the published description, and it is not settled here.**
+The published variant discusses the high region as a contiguous run of
+orientations around the peak. This implementation keeps every orientation within
+tolerance of the peak whether or not it is contiguous with it. Nothing in this
+tree can say which is right: no real data is readable here yet, the difference
+only shows on a distribution with two separated peaks, and the reproduction
+check against the published result is #77. The choice is written down so that a
+disagreement about a number is traceable to it.
+
 ## What this does not decide
 
 What a count of congruent cells means. There is no threshold here above which a
@@ -89,14 +126,22 @@ from gutachten.surface import Surface
 
 __all__ = [
     "METHOD",
+    "METHOD_HIGH",
     "VERSION",
+    "VERSION_HIGH",
     "CmcParameters",
     "Consensus",
     "ConsensusRule",
+    "HighCmcParameters",
+    "HighScore",
     "Score",
+    "disagreements",
     "record",
+    "record_high",
     "score",
+    "score_high",
     "score_pair",
+    "score_pair_high",
 ]
 
 #: What a manifest names this stage by, and the version of what it computes. The
@@ -105,6 +150,12 @@ __all__ = [
 #: without describing the search that produced the answers counted.
 METHOD = "congruent-matching-cells"
 VERSION = "1"
+
+#: The high variant, under its own name rather than as a flag on the one above.
+#: The two read different sets of parameters, so one record covering both would
+#: have to carry settings the rule that produced it never looked at.
+METHOD_HIGH = "high-congruent-matching-cells"
+VERSION_HIGH = "1"
 
 
 class ConsensusRule(Enum):
@@ -140,6 +191,30 @@ class CmcParameters:
 
 
 @dataclass(frozen=True)
+class HighCmcParameters:
+    """What the high variant is told, which is not the same set as the rule above.
+
+    ``high_tolerance`` is how many cells below the busiest orientation an
+    orientation may be and still be treated as part of the peak. It is the
+    parameter the variant adds.
+
+    There is no rotation threshold and no rotation bin here, and their absence is
+    the shape of the variant rather than an omission. Within one orientation
+    every cell carries that orientation, so an agreement threshold on rotation
+    would compare each cell against itself and reject nothing. What the original
+    rule does with a threshold, this one does with the shape of the count across
+    orientations.
+    """
+
+    down_threshold: float
+    across_threshold: float
+    correlation_threshold: float
+    consensus: ConsensusRule
+    high_tolerance: int
+    translation_bin: float | None = None
+
+
+@dataclass(frozen=True)
 class Consensus:
     """Where the cells agreed, and what said so."""
 
@@ -160,6 +235,14 @@ class Score:
     ``failed_correlation``, ``failed_down``, ``failed_across`` and
     ``failed_rotation`` are how many eligible cells each condition rejected on
     its own. They overlap and do not sum to ``discarded``.
+
+    ``cells`` names which cells were counted, not only how many. Two rules that
+    reach the same total out of different cells have not agreed, and a count on
+    its own cannot say so.
+
+    ``rule`` is which rule produced this, carried in the result rather than left
+    to whatever called it, so anything reporting a score can say what it is a
+    score of.
     """
 
     congruent: int
@@ -170,6 +253,8 @@ class Score:
     failed_down: int
     failed_across: int
     failed_rotation: int
+    cells: tuple[tuple[int, int], ...]
+    rule: str = METHOD
 
 
 def _checked(parameters: CmcParameters) -> tuple[float, float, float, float, float, float]:
@@ -351,7 +436,7 @@ def score(registration: Registration, parameters: CmcParameters) -> Score:
 
     agreed = _consensus(matches, parameters.consensus, tb, rb)
 
-    congruent = 0
+    counted: list[tuple[int, int]] = []
     failed = {"correlation": 0, "down": 0, "across": 0, "rotation": 0}
     for match in matches:
         checks = {
@@ -364,9 +449,11 @@ def score(registration: Registration, parameters: CmcParameters) -> Score:
             if not held:
                 failed[name] += 1
         if all(checks.values()):
-            congruent += 1
+            counted.append((match.row, match.column))
 
+    congruent = len(counted)
     return Score(
+        cells=tuple(counted),
         congruent=congruent,
         eligible=len(matches),
         discarded=len(matches) - congruent,
@@ -376,6 +463,198 @@ def score(registration: Registration, parameters: CmcParameters) -> Score:
         failed_across=failed["across"],
         failed_rotation=failed["rotation"],
     )
+
+
+def _checked_high(parameters: HighCmcParameters) -> tuple[float, float, float, float, int]:
+    """Refuse a high variant whose settings do not describe one.
+
+    The three it shares with the original rule are refused by the original
+    rule's own check, handed a record carrying them, so one condition has one
+    message wherever it fires. The rotation threshold that check also asks for
+    is supplied here as zero and is not read by anything downstream, because
+    this variant has no rotation threshold to refuse.
+    """
+    shared = CmcParameters(
+        down_threshold=parameters.down_threshold,
+        across_threshold=parameters.across_threshold,
+        rotation_threshold_deg=0.0,
+        correlation_threshold=parameters.correlation_threshold,
+        consensus=parameters.consensus,
+        translation_bin=parameters.translation_bin,
+        # The original rule refuses a histogram record with no rotation bin, and
+        # this variant has none to give, so the shared check is handed the
+        # translation width for both. Nothing reads the rotation one here.
+        rotation_bin_deg=parameters.translation_bin,
+    )
+    down, across, _, correlation, translation_bin, _ = _checked(shared)
+
+    tolerance = parameters.high_tolerance
+    if isinstance(tolerance, bool) or not isinstance(tolerance, int):
+        raise TypeError(
+            f"high_tolerance is a number of cells, so it must be a whole one, got {tolerance!r}."
+        )
+    if tolerance < 0:
+        raise ValueError(
+            f"high_tolerance is how far below the busiest orientation an orientation may "
+            f"be and still count, so it cannot be negative, got {tolerance!r}."
+        )
+    return down, across, correlation, translation_bin, tolerance
+
+
+@dataclass(frozen=True)
+class HighScore:
+    """The high variant's count, and the distribution it was read off.
+
+    ``per_angle`` is how many cells agreed at each orientation on its own, in the
+    order the orientations were searched. It is reported rather than reduced to
+    its peak because the shape of it is the thing the variant is about: a
+    matching pair puts a spike on one orientation and a non-matching pair does
+    not, and a reader given only the peak cannot tell those apart.
+
+    ``high_angles_deg`` is the orientations within ``high_tolerance`` cells of
+    the peak, and ``cells`` names the cells counted at any of them.
+    """
+
+    congruent: int
+    eligible: int
+    discarded: int
+    peak: int
+    high_angles_deg: tuple[float, ...]
+    per_angle: tuple[tuple[float, int], ...]
+    cells: tuple[tuple[int, int], ...]
+    rule: str = METHOD_HIGH
+
+
+def _agreeing_at(
+    matches: tuple[CellRegistration, ...],
+    consensus_rule: ConsensusRule,
+    translation_bin: float,
+    down_threshold: float,
+    across_threshold: float,
+    correlation_threshold: float,
+) -> tuple[tuple[int, int], ...]:
+    """Which cells agree at one orientation, judged against that orientation's own consensus.
+
+    The rotation is not compared with anything. Every cell here carries the
+    orientation this call is about, so a comparison of it against a consensus
+    over the same one value can only ever hold.
+    """
+    if not matches:
+        return ()
+    agreed = _consensus(matches, consensus_rule, translation_bin, translation_bin)
+    return tuple(
+        (match.row, match.column)
+        for match in matches
+        if match.correlation >= correlation_threshold
+        and abs(match.down - agreed.down) <= down_threshold
+        and abs(match.across - agreed.across) <= across_threshold
+    )
+
+
+def score_high(registration: Registration, parameters: HighCmcParameters) -> HighScore:
+    """The high variant: how many cells agree anywhere near the busiest orientation.
+
+    Read off the count of agreeing cells as a function of orientation rather than
+    off one consensus. Where the consensus is poorly determined, the original
+    rule's single orientation is a coin toss between two nearly equal peaks and
+    the cells at the losing one are thrown away; here every orientation within
+    ``high_tolerance`` cells of the busiest is kept and the cells counted at any
+    of them are the score.
+    """
+    down, across, correlation, translation_bin, tolerance = _checked_high(parameters)
+
+    if not registration.matches:
+        raise ValueError(
+            "the registration returned no cell, so there is nothing to take a consensus "
+            "over. A score of zero congruent cells and a comparison that could not be "
+            "made are different results and this rule will not report one as the other."
+        )
+
+    at_each: list[tuple[float, tuple[tuple[int, int], ...]]] = [
+        (
+            angle,
+            _agreeing_at(matches, parameters.consensus, translation_bin, down, across, correlation),
+        )
+        for angle, matches in registration.by_angle
+    ]
+    per_angle = tuple((angle, len(agreeing)) for angle, agreeing in at_each)
+    peak = max(count for _, count in per_angle)
+
+    if peak == 0:
+        # No orientation had a cell agreeing with any other, so there is no peak
+        # to be near. Reporting every orientation as within tolerance of a peak
+        # of nothing would name the whole search as the region of agreement.
+        return HighScore(
+            congruent=0,
+            eligible=len(registration.matches),
+            discarded=len(registration.matches),
+            peak=0,
+            high_angles_deg=(),
+            per_angle=per_angle,
+            cells=(),
+        )
+
+    high = [angle for angle, count in per_angle if count >= peak - tolerance]
+    counted: set[tuple[int, int]] = set()
+    for angle, agreeing in at_each:
+        if angle in high:
+            counted.update(agreeing)
+
+    return HighScore(
+        congruent=len(counted),
+        eligible=len(registration.matches),
+        discarded=len(registration.matches) - len(counted),
+        peak=peak,
+        high_angles_deg=tuple(high),
+        per_angle=per_angle,
+        cells=tuple(sorted(counted)),
+    )
+
+
+def record_high(search: RegistrationParameters, rule: HighCmcParameters) -> ComparisonRecord:
+    """The manifest entry for a score made by the high variant.
+
+    A separate record under a separate method name rather than a flag on the
+    original one. The two rules read different sets of parameters, and a record
+    that carried the union of them would say a rotation threshold decided a
+    count that never read one.
+    """
+    down, across, correlation, translation_bin, tolerance = _checked_high(rule)
+    searched = search_record(search).parameters
+    return ComparisonRecord(
+        method=METHOD_HIGH,
+        version=VERSION_HIGH,
+        parameters=tuple(
+            sorted(
+                (
+                    *searched,
+                    ("across_threshold", across),
+                    ("consensus", rule.consensus.value),
+                    ("correlation_threshold", correlation),
+                    ("down_threshold", down),
+                    ("high_tolerance", tolerance),
+                    (
+                        "translation_bin",
+                        None if rule.translation_bin is None else translation_bin,
+                    ),
+                )
+            )
+        ),
+    )
+
+
+def disagreements(
+    original: Score, high: HighScore
+) -> tuple[tuple[tuple[int, int], ...], tuple[tuple[int, int], ...]]:
+    """The cells one rule counted and the other did not, both ways round.
+
+    Enumerated rather than reduced to a difference of two totals. Two rules can
+    reach the same count out of different cells, which is a disagreement a
+    subtraction reports as none.
+    """
+    first = set(original.cells)
+    second = set(high.cells)
+    return tuple(sorted(first - second)), tuple(sorted(second - first))
 
 
 def score_pair(
@@ -391,3 +670,16 @@ def score_pair(
     ones it was produced with.
     """
     return score(register(subject, reference, search), rule), record(search, rule)
+
+
+def score_pair_high(
+    subject: Surface,
+    reference: Surface,
+    search: RegistrationParameters,
+    rule: HighCmcParameters,
+) -> tuple[HighScore, ComparisonRecord]:
+    """The same, under the high variant."""
+    return (
+        score_high(register(subject, reference, search), rule),
+        record_high(search, rule),
+    )

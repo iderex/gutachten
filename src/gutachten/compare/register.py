@@ -196,12 +196,21 @@ class Registration:
     that could not be registered and a cell that registered badly are different
     inputs to the rule that counts them.
 
+    ``by_angle`` holds the same thing one orientation at a time: for each angle
+    searched, where each cell matched best at that angle alone. ``matches`` is
+    the best of those per cell and is derived from it. Both are kept because a
+    decision rule that only ever sees the best-over-angles answer cannot ask how
+    the count of agreeing cells varies with orientation, which is what the high
+    variant in #75 is about, and re-running the search per angle to recover it
+    would pay for the whole search again.
+
     ``correlations`` is how many cell-by-angle correlations were evaluated. It is
     the same number on every machine and it is what a sweep design is costed
     from.
     """
 
     matches: tuple[CellRegistration, ...]
+    by_angle: tuple[tuple[float, tuple[CellRegistration, ...]], ...]
     angles_deg: tuple[float, ...]
     correlations: int
 
@@ -386,17 +395,29 @@ def register(
 
     searched = angles(parameters)
     best: dict[tuple[int, int], CellRegistration] = {}
+    per_angle: list[tuple[float, tuple[CellRegistration, ...]]] = []
     evaluated = 0
 
     for angle in searched:
         turned = rotate_heights(np.asarray(reference.heights), angle)
         padded = np.pad(turned, limit, mode="constant", constant_values=np.nan)
+        here: list[CellRegistration] = []
         for tile in usable:
             evaluated += 1
             found = _best_placement(tile, padded, minimum, limit)
             if found is None:
                 continue
             down, across, correlation, overlap = found
+            at_this_angle = CellRegistration(
+                row=tile.row,
+                column=tile.column,
+                down=down,
+                across=across,
+                rotation_deg=angle,
+                correlation=correlation,
+                overlap=overlap,
+            )
+            here.append(at_this_angle)
             key = (tile.row, tile.column)
             standing = best.get(key)
             # Strictly greater, so the first angle searched holds a tie. A pair
@@ -404,15 +425,8 @@ def register(
             # same one on every run rather than the one the loop happened to
             # reach last.
             if standing is None or correlation > standing.correlation:
-                best[key] = CellRegistration(
-                    row=tile.row,
-                    column=tile.column,
-                    down=down,
-                    across=across,
-                    rotation_deg=angle,
-                    correlation=correlation,
-                    overlap=overlap,
-                )
+                best[key] = at_this_angle
+        per_angle.append((angle, tuple(here)))
 
     if not best:
         raise ValueError(
@@ -425,6 +439,7 @@ def register(
 
     return Registration(
         matches=tuple(best[key] for key in sorted(best)),
+        by_angle=tuple(per_angle),
         angles_deg=searched,
         correlations=evaluated,
     )
