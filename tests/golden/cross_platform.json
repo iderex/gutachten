@@ -1,0 +1,38 @@
+{
+  "what": "The summary of one run of the every-step profile over the generated surface in tests/golden/determinism_fixture.py, recorded so that a run on any supported platform can be compared against it.",
+  "recorded_on": "ubuntu-latest, python 3.12.3, numpy 2.5.1",
+  "recorded_from": "the test (ubuntu) leg of workflow run 31303673058 on branch issue-27-determinism, which reported the same five numbers from each of the three platforms in its skip message",
+  "tolerance_um": 1e-09,
+  "tolerance_reasoning": "Bounded from below by what the three platforms actually did and from above by what a measurement could mean. The largest spread between the three readings was 6.661338147750939e-16 micrometres, which is three units in the last place of a double at this magnitude and is the reordering of floating point addition by a differently built numerical backend. The declared tolerance sits about six orders of magnitude above that, so it is not tripped by reordering. It sits three orders of magnitude below one nanometre, which is the finest height an instrument in this field resolves, so it cannot absorb a difference anybody could measure. It is not fitted to the observed spread: a tolerance set at the largest deviation seen once is a tolerance that reds on the next runner image for a reason that is not a defect.",
+  "observed_spread_um": 6.661338147750939e-16,
+  "readings": {
+    "linux": {
+      "deviation_um": 0.3301963273789033,
+      "highest_um": 0.937361936492634,
+      "lowest_um": -0.9495392545489562,
+      "mean_um": 0.0011719714009580454,
+      "measured": 48264.0
+    },
+    "macos": {
+      "deviation_um": 0.3301963273789034,
+      "highest_um": 0.9373619364926333,
+      "lowest_um": -0.9495392545489563,
+      "mean_um": 0.0011719714009580356,
+      "measured": 48264.0
+    },
+    "windows": {
+      "deviation_um": 0.33019632737890325,
+      "highest_um": 0.9373619364926339,
+      "lowest_um": -0.9495392545489564,
+      "mean_um": 0.0011719714009580421,
+      "measured": 48264.0
+    }
+  },
+  "summary": {
+    "deviation_um": 0.3301963273789033,
+    "highest_um": 0.937361936492634,
+    "lowest_um": -0.9495392545489562,
+    "mean_um": 0.0011719714009580454,
+    "measured": 48264.0
+  }
+}
