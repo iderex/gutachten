@@ -328,6 +328,45 @@ def _infinite_height() -> bytes:
     return with_payload(payload, restate_checksum=True)
 
 
+def _mis_scaled_by_a_thousand() -> bytes:
+    """The same surface with millimetres written where the format fixes metres.
+
+    The factor of a thousand. Nothing in the container is malformed: the
+    checksum is restated so it agrees, the shape agrees, the axis types are the
+    ones the reader supports, and every number parses. Only the size of the
+    numbers says anything is wrong, which is why the range check is the only
+    place this can be caught and why a reader without one hands it on.
+
+    Built from the fixture surface rather than from a flat one, so it carries the
+    absent sample the fixture carries. A range check taking a plain maximum over
+    an array holding a not-a-number compares against not-a-number and passes, so
+    this container is also what refuses that spelling of the guard.
+    """
+    heights = np.asarray(a_surface().heights, dtype="<f8")
+    payload = np.ascontiguousarray(heights * 1e-6 * 1000.0, dtype="<f8").tobytes()
+    return with_payload(payload, restate_checksum=True)
+
+
+def _every_sample_absent() -> bytes:
+    """A container in which nothing was measured at all.
+
+    It reads. An entirely absent surface says nothing about whether the scale is
+    right, so the range check has no span to judge and lets it through rather
+    than refusing it under a reason about the scale. Filed here so that the
+    decision is a container somebody can run and not a sentence in a docstring.
+    """
+    nothing = np.full((2, 3), np.nan, dtype=np.float64)
+    absent = Surface(
+        heights=nothing,
+        spacing_y=4.0,
+        spacing_x=2.5,
+        unit=LengthUnit.MICROMETRE,
+        orientation=AxisOrientation.Y_DOWN,
+        source="generated-for-a-fixture",
+    )
+    return to_bytes(absent)
+
+
 @dataclass(frozen=True)
 class Fixture:
     """One container of the corpus, and what it is built to establish."""
@@ -346,6 +385,7 @@ FIXTURES: tuple[Fixture, ...] = (
     Fixture("stored-without-compression", None, _stored_without_compression),
     Fixture("incremental-height-axis", None, _incremental_height_axis),
     Fixture("a-comment-written-by-another-tool", None, _a_foreign_comment),
+    Fixture("every-sample-absent", None, _every_sample_absent),
     Fixture("not-an-archive-at-all", "not-a-container", _not_a_container),
     Fixture("altered-after-packing", "not-a-container", _altered_after_packing),
     Fixture("a-header-declaring-a-huge-member", "entry-too-large", _declares_a_huge_member),
@@ -380,4 +420,9 @@ FIXTURES: tuple[Fixture, ...] = (
     ),
     Fixture("one-flipped-payload-bit", "point-data-checksum-mismatch", _tampered_payload),
     Fixture("an-infinite-height", "height-not-finite", _infinite_height),
+    Fixture(
+        "a-surface-mis-scaled-by-a-thousand",
+        "height-range-implausible",
+        _mis_scaled_by_a_thousand,
+    ),
 )

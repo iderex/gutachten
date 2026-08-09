@@ -30,8 +30,11 @@ stripped from the element name.
 refusal aimed at a missing unit element would never fire, and what is refused
 here instead is an increment that is absent, not a number, or not positive. That
 the unit is not declared anywhere in the format is the finding behind
-[#45](https://github.com/iderex/gutachten/issues/45), and the implausible height
-range check that issue asks for is not in this module yet.
+[#45](https://github.com/iderex/gutachten/issues/45). Because no file declares
+its unit, nothing in the container contradicts a writer that put the wrong one
+there, and the only thing left to check is whether the numbers that arrive could
+be a cartridge case at all. That is `MAX_HEIGHT_RANGE_MICROMETRES` below, and
+what it cannot see is written there with it.
 
 **An absolute height axis carries the quantity and its increment is not a scale
 factor.** Multiplying by the increment as well produced a surface that was
@@ -83,7 +86,14 @@ import numpy as np
 from gutachten.surface import AxisOrientation, LengthUnit, Surface, TransformRecord
 from gutachten.x3p.writer import METADATA_KEY
 
-__all__ = ["MAX_ENTRY_BYTES", "REASONS", "X3PError", "read", "read_bytes"]
+__all__ = [
+    "MAX_ENTRY_BYTES",
+    "MAX_HEIGHT_RANGE_MICROMETRES",
+    "REASONS",
+    "X3PError",
+    "read",
+    "read_bytes",
+]
 
 #: Every reason this reader refuses a container. A closed vocabulary rather than
 #: prose, so a test asserts that a fixture was refused for the reason it was
@@ -103,6 +113,7 @@ REASONS: Final[tuple[str, ...]] = (
     "size-disagrees-with-the-payload",
     "point-data-checksum-mismatch",
     "height-not-finite",
+    "height-range-implausible",
 )
 
 #: The largest member this reader will decompress. A scan of 4000 by 4000
@@ -116,6 +127,54 @@ MAX_ENTRY_BYTES: Final[int] = 512 * 1024 * 1024
 #: to the internal unit is the most expensive arithmetic error available in this
 #: project and it should exist in exactly one place.
 _FILE_UNIT: Final[LengthUnit] = LengthUnit.METRE
+
+#: The largest peak to valley height, in micrometres, this reader will read a
+#: cartridge case container as. A surface whose measured samples span more than
+#: this is refused rather than handed on.
+#:
+#: The bound exists because the format declares no unit. Lengths are metres by
+#: definition of the format, so a writer that put millimetres in the field, or a
+#: conversion applied twice somewhere upstream, produces a container nothing in
+#: it contradicts. The result is a surface that is smooth, correctly shaped and
+#: wrong by a factor of a thousand, and every step after the reader processes it
+#: without complaint.
+#:
+#: It is deliberately not a tight bound on what a cartridge case is, because
+#: this project cannot back a tight one. It only has to sit between two
+#: populations that are three orders of magnitude apart. Below it: the relief on
+#: a fired primer, which is the firing pin impression plus the breech face marks
+#: plus the form of the cup. This project's own generator, whose parameters were
+#: chosen to stand in for one, spans 38.367 micrometres at its defaults and
+#: 105.63 with the deepest firing pin, form and drag mark it is used with:
+#:
+#:     .venv/Scripts/python.exe -c "
+#:     import numpy as np
+#:     from gutachten.synth import SurfaceParameters, generate
+#:     for name, p in (('defaults', SurfaceParameters()),
+#:                     ('deep', SurfaceParameters(firing_pin_depth_um=60.0,
+#:                      form_depth_um=40.0, striae_depth_um=6.0,
+#:                      drag_mark_depth_um=15.0, noise_um=1.0))):
+#:         h = generate(p).heights_um
+#:         o = h[~np.isnan(h)]
+#:         print(name, round(float(o.max() - o.min()), 3))
+#:     "
+#:     defaults 38.367
+#:     deep 105.63
+#:
+#: Those are synthetic and are not evidence about real scans; they are the only
+#: cartridge case numbers this repository can produce today, and the bound is set
+#: an order of magnitude above the larger of them. Above the bound: the same
+#: surface mis-scaled, which lands at tens of thousands of micrometres.
+#:
+#: **What it does not catch, and this is not small.** The check bites only where
+#: the true span is more than a thousandth of the bound, so a mis-scaled scan
+#: whose real relief is under one micrometre passes it. The one real container
+#: this reader was established against spans 0.6196 micrometres, on the figures
+#: quoted with their command on #33, and a thousandfold mis-scaling of that file
+#: would arrive at 619.6 and be read. It is a logo rather than a cartridge case,
+#: and the bound is aimed at cartridge cases, but a reader should not take this
+#: guard for a proof that the scale is right.
+MAX_HEIGHT_RANGE_MICROMETRES: Final[float] = 1000.0
 
 
 class X3PError(Exception):
@@ -374,6 +433,42 @@ def _heights(payload: bytes, record: _Element, axes: _Element) -> np.ndarray:
     return heights
 
 
+def _refuse_an_implausible_range(heights: np.ndarray, source: str) -> None:
+    """Refuse a surface whose relief could not be a cartridge case, in micrometres.
+
+    Called after the conversion to the internal unit rather than before it, so
+    the number in the message is the one every step downstream would have seen
+    and the bound is quoted in the unit it is written in. A check on the metres
+    in the file would compare against a constant with six zeroes in it, which is
+    the shape of literal this project's own defect class is made of.
+
+    The span is taken over the measured samples only. An absent sample is
+    not-a-number, and a maximum over an array holding one is not-a-number, so a
+    comparison against it is false and the guard would pass everything it was
+    written to catch. Every real scan loses samples at the edge, so that spelling
+    would have looked green on the whole corpus and gone red on nothing.
+
+    A container in which nothing at all was measured has no span, and it is read.
+    Whether an entirely absent surface should be refused is a different question
+    from whether the scale is right, and answering it here would mean this
+    refusal fires for a reason its name does not carry.
+    """
+    observed = heights[~np.isnan(heights)]
+    if observed.size == 0:
+        return
+    span = float(observed.max() - observed.min())
+    if span > MAX_HEIGHT_RANGE_MICROMETRES:
+        raise X3PError(
+            "height-range-implausible",
+            f"the heights in {source!r} span {span} micrometres and this reader admits "
+            f"{MAX_HEIGHT_RANGE_MICROMETRES}. The format states no unit anywhere, so a "
+            "container whose numbers are in some other length carries nothing that "
+            "contradicts itself, and a surface mis-scaled by a factor of a thousand is "
+            "smooth, correctly shaped and absurd. Check what wrote this file before "
+            "raising the bound.",
+        )
+
+
 #: The default orientation, and it is an assumption rather than a reading. The
 #: format has no element for it, so a container written by anything but this
 #: project says nothing about which way its row axis increases, and `Surface`
@@ -484,9 +579,11 @@ def read_bytes(data: bytes, source: str) -> Surface:
 
     heights = _heights(payload, record3, axes)
     factor = _FILE_UNIT.micrometres
+    internal = heights * factor
+    _refuse_an_implausible_range(internal, source)
     orientation, provenance = _declared(root)
     return Surface(
-        heights=heights * factor,
+        heights=internal,
         spacing_y=_increment(axes, "CY") * factor,
         spacing_x=_increment(axes, "CX") * factor,
         unit=LengthUnit.MICROMETRE,

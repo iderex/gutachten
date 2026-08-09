@@ -64,5 +64,13 @@ file states an axis orientation, while a `Surface` requires one, so the reader
 records `Y_DOWN` and says in its own docstring that this is an assumption. A
 container this project wrote carries the orientation it was written from,
 because a comment is the only place the format leaves for it.
-[#45](https://github.com/iderex/gutachten/issues/45) is where both are argued
-and where the implausible height range check belongs; neither is settled here.
+[#45](https://github.com/iderex/gutachten/issues/45) is where both are argued.
+
+Because no file declares its unit, nothing inside a container contradicts a
+writer that used the wrong one, so the reader checks the only thing left: whether
+the numbers that arrive could be a cartridge case at all. A surface whose
+measured samples span more than `MAX_HEIGHT_RANGE_MICROMETRES` is refused, and
+that constant carries the measurement the bound was set from and the case it
+cannot see. It does not make the scale verified. It refuses the factor of a
+thousand, on a surface with relief enough for a thousandfold error to exceed the
+bound, and nothing beyond that.
