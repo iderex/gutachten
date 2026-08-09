@@ -20,8 +20,11 @@ are, and it will do both while looking like a careful piece of work.
 
 Every source of randomness draws from a seed that is set explicitly and recorded
 in the run manifest. No code calls an unseeded generator. The manifest refuses a
-run that records no seed. Catching an unseeded call at the point it is made is
-[#27](https://github.com/iderex/gutachten/issues/27) and is not done yet.
+run that records no seed, and `refuse_unseeded_draws` in
+`src/gutachten/determinism.py` refuses a draw from the global generator at the
+call, naming the function. The whole registered chain runs inside that refusal
+in the suite. What it cannot see is a generator built elsewhere and passed in,
+or a draw made in a subprocess.
 
 The number of threads the numerical backend uses is pinned in the reference
 mode. A threaded reduction sums in a different order on a machine with a
@@ -55,14 +58,28 @@ calling for them, so a run that never chose is a run that does not start.
 ## What is promised, and what is not
 
 Promised: bit identical results on the same machine in the same locked
-environment.
+environment. Two runs of the chain that runs every registered step are compared
+byte for byte in the suite, over the heights and over the serialised manifest.
 
 Promised: agreement within a declared tolerance across Linux, macOS and Windows.
-That tolerance is a number to be measured rather than guessed, and it has not
-been measured yet. Measuring it and enforcing it is
-[#27](https://github.com/iderex/gutachten/issues/27). Until then this project
-promises the same-machine half only, and no cross-platform figure quoted
-anywhere here is a measurement.
+The tolerance is one femtometre, which is `1e-9` micrometres, and it is enforced
+by `tests/golden/test_cross_platform.py` on every platform in the matrix rather
+than described here.
+
+It was measured rather than chosen. The same run was made on all three platforms
+in one workflow run and the largest spread between the five recorded numbers was
+`6.661338147750939e-16` micrometres, which is three units in the last place of a
+double at that magnitude. The three readings, the spread and the argument for
+the declared number are in `tests/golden/cross_platform.json`. The tolerance is
+not the observed spread: it sits about six orders of magnitude above it, so a
+differently built backend reordering its additions does not red the gate, and
+three orders of magnitude below one nanometre, which is the finest height an
+instrument in this field resolves, so it cannot absorb a difference anybody
+could measure.
+
+What that measurement covers is three runner images with one numerical build and
+one processor family each, on the day it was taken. It is a statement about what
+the gate runs and not about every machine.
 
 Not promised, and not a gap to be closed later: bit identical results across
 different processors or different library builds. A BLAS compiled for one
