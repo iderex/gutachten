@@ -262,6 +262,13 @@ def _entries_that_share_their_bytes() -> bytes:
     Built by writing the payload entry's recorded position over the metadata
     document's, which is four bytes at the end of a central directory record.
 
+    Filed under the malformed archive reason rather than one of its own, because
+    which of the two routes the standard library takes is not the same on every
+    platform. On the pull request that added this the same bytes went through the
+    warning on macOS and Windows and through the archive layer's own error on
+    Linux. A vocabulary word for one of the routes would have meant a different
+    thing depending on where the suite ran.
+
     [#115]: https://github.com/iderex/gutachten/issues/115
     """
     written = bytearray(repack(members()))
@@ -589,9 +596,7 @@ FIXTURES: tuple[Fixture, ...] = (
         _a_compression_method_nobody_implements,
     ),
     Fixture("an-encrypted-entry", "recognised-and-unsupported", _an_encrypted_entry),
-    Fixture(
-        "entries-that-share-their-bytes", "overlapping-entries", _entries_that_share_their_bytes
-    ),
+    Fixture("entries-that-share-their-bytes", "not-a-container", _entries_that_share_their_bytes),
     Fixture("a-header-declaring-a-huge-member", "entry-too-large", _declares_a_huge_member),
     Fixture("an-entry-climbing-out", "entry-outside-the-archive", _escaping_entry),
     Fixture("an-entry-naming-a-root", "entry-outside-the-archive", _absolute_entry),

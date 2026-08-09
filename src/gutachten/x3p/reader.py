@@ -113,7 +113,6 @@ REASONS: Final[tuple[str, ...]] = (
     "not-a-number",
     "increment-not-positive",
     "size-disagrees-with-the-payload",
-    "overlapping-entries",
     "point-data-checksum-mismatch",
     "height-not-finite",
     "height-range-implausible",
@@ -354,12 +353,19 @@ def _member(archive: zipfile.ZipFile, name: str) -> bytes:
     archive whose entries overlap is the other zip bomb shape beside the declared
     size this function already bounds: the same bytes are counted as the content
     of several members, so a small archive expands to many times its size. The
-    standard library only warns about one of the two ways that is written, and a
-    warning is a message the caller's filter decides the fate of. Under the
+    standard library refuses one spelling of that and only warns about the other,
+    and a warning is a message the caller's filter decides the fate of. Under the
     suite's filter it is an error and under an operator's default it is a line on
     the terminal that the read then ignores, which is the worse half and the one
     nobody would see. It is turned into a refusal here so the behaviour is the
     reader's rather than the caller's.
+
+    Which of the two the standard library takes is not the same on every
+    platform, measured on the pull request that added this: the same container
+    was refused through the warning on macOS and Windows and through the archive
+    layer's own error on Linux. So the refusal carries one reason on all three
+    and the message says which route it came by, rather than a vocabulary word
+    that would mean a different thing depending on where the suite ran.
     """
     info = archive.getinfo(name)
     if info.file_size > MAX_ENTRY_BYTES:
@@ -376,7 +382,7 @@ def _member(archive: zipfile.ZipFile, name: str) -> bytes:
                 return handle.read()
     except UserWarning as overlapping:
         raise X3PError(
-            "overlapping-entries",
+            "not-a-container",
             f"the archive layer will not read {name!r} without a warning: {overlapping}. "
             "Entries sharing bytes are counted twice, so a small archive expands to many "
             "times its size, and a warning is something the caller's filter can silence.",
