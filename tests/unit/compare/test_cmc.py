@@ -19,13 +19,19 @@ import pytest
 
 from gutachten.compare.cmc import (
     METHOD,
+    METHOD_HIGH,
     VERSION,
     CmcParameters,
     ConsensusRule,
+    HighCmcParameters,
     Score,
+    disagreements,
     record,
+    record_high,
     score,
+    score_high,
     score_pair,
+    score_pair_high,
 )
 from gutachten.compare.register import (
     CellRegistration,
@@ -325,21 +331,26 @@ def test_the_bin_width_changes_which_cells_count() -> None:
 
 def a_registration(values: tuple[tuple[int, int, float], ...]) -> Registration:
     """A registration assembled by hand, so a rule can be put in a stated corner."""
+    matches = tuple(
+        CellRegistration(
+            row=index,
+            column=0,
+            down=down,
+            across=across,
+            rotation_deg=rotation,
+            correlation=1.0,
+            overlap=100,
+        )
+        for index, (down, across, rotation) in enumerate(values)
+    )
+    angles = tuple(sorted({match.rotation_deg for match in matches}))
     return Registration(
-        matches=tuple(
-            CellRegistration(
-                row=index,
-                column=0,
-                down=down,
-                across=across,
-                rotation_deg=rotation,
-                correlation=1.0,
-                overlap=100,
-            )
-            for index, (down, across, rotation) in enumerate(values)
+        matches=matches,
+        by_angle=tuple(
+            (angle, tuple(m for m in matches if m.rotation_deg == angle)) for angle in angles
         ),
-        angles_deg=(-2.0, 0.0, 2.0),
-        correlations=len(values),
+        angles_deg=angles,
+        correlations=len(values) * len(angles),
     )
 
 
@@ -450,7 +461,7 @@ def test_the_record_and_the_score_come_out_of_one_call() -> None:
 
 def test_a_registration_with_no_cell_is_refused_rather_than_scored_at_zero() -> None:
     empty = register(a_matching_subject(), a_reference(), SEARCH)
-    stripped = Registration(matches=(), angles_deg=empty.angles_deg, correlations=0)
+    stripped = Registration(matches=(), by_angle=(), angles_deg=empty.angles_deg, correlations=0)
 
     with pytest.raises(ValueError, match="nothing to take a consensus over"):
         score(stripped, rule())
@@ -513,3 +524,374 @@ def test_a_bin_width_that_is_not_a_number_is_refused() -> None:
 def test_a_median_rule_stating_a_bin_width_is_refused() -> None:
     with pytest.raises(ValueError, match="does not read"):
         record(SEARCH, rule(translation_bin=2.0))
+
+
+def high(**overrides: object) -> HighCmcParameters:
+    values: dict[str, object] = {
+        "down_threshold": 1.0,
+        "across_threshold": 1.0,
+        "correlation_threshold": 0.5,
+        "consensus": ConsensusRule.MEDIAN,
+        "high_tolerance": 1,
+    }
+    values.update(overrides)
+    return HighCmcParameters(**values)  # type: ignore[arg-type]
+
+
+def test_both_rules_run_from_one_registration() -> None:
+    # The clause asking for that. One search, two decision layers, so a
+    # difference between the two scores is a difference between the rules and
+    # not between two pipelines.
+    registration = register(a_matching_subject(), a_reference(), SEARCH)
+
+    original = score(registration, rule())
+    variant = score_high(registration, high())
+
+    assert original.eligible == variant.eligible == CELLS
+    assert original.congruent == 16
+    assert variant.congruent == 16
+    assert variant.peak == 16
+    assert variant.high_angles_deg == (ROTATION_DEG,)
+
+
+def test_the_count_by_orientation_is_reported_and_not_only_its_peak() -> None:
+    # The shape is the thing the variant is about. A matching pair puts a spike
+    # on one orientation, and a reader given only the peak cannot tell that from
+    # a count spread over the whole range.
+    variant = score_high(register(a_matching_subject(), a_reference(), SEARCH), high())
+
+    assert variant.per_angle == (
+        (-10.0, 0),
+        (-8.0, 0),
+        (-6.0, 0),
+        (-4.0, 0),
+        (-2.0, 0),
+        (0.0, 0),
+        (2.0, 2),
+        (4.0, 4),
+        (6.0, 16),
+        (8.0, 4),
+        (10.0, 0),
+    )
+
+
+def test_the_two_rules_disagree_by_naming_cells_and_not_by_a_difference_of_totals() -> None:
+    # The clause asking for the disagreements to be enumerated. On the
+    # non-matching pair the variant recovers three cells the original rule
+    # discards, and it recovers them because they agreed with each other at an
+    # orientation the single consensus did not land on.
+    registration = register(a_non_matching_subject(), a_reference(), SEARCH)
+
+    original = score(registration, rule())
+    variant = score_high(registration, high())
+    only_original, only_high = disagreements(original, variant)
+
+    assert (original.congruent, variant.congruent) == (4, 7)
+    assert only_original == ()
+    assert only_high == ((0, 2), (1, 2), (3, 3))
+
+
+def test_the_variant_raises_the_non_matching_score_as_well_as_the_matching_one() -> None:
+    # A result that makes the method look worse, reported in the same shape as a
+    # flattering one. Recovering cells the original rule misses is what the
+    # variant is for, and on this construction it recovers them for a
+    # non-matching pair too, so the gap between the two pairs narrows from
+    # 16 against 4 to 16 against 7. Whether that holds on real data is #77.
+    matching = score_high(register(a_matching_subject(), a_reference(), SEARCH), high())
+    non_matching = score_high(register(a_non_matching_subject(), a_reference(), SEARCH), high())
+
+    assert (matching.congruent, non_matching.congruent) == (16, 7)
+    assert matching.congruent > non_matching.congruent
+
+
+def two_peaks() -> Registration:
+    """A registration with two orientations that nearly tie, built by hand.
+
+    The case the variant exists for does not arise on the generated pairs above,
+    where one orientation wins outright, so it is constructed. Six cells, four
+    agreeing at one orientation and three at another, with every cell present at
+    both.
+    """
+    layout: dict[float, tuple[tuple[int, int, int], ...]] = {
+        # angle: (cell, down, across) for each of the six cells
+        0.0: ((0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0), (4, 9, 9), (5, 9, 9)),
+        2.0: ((0, 20, 20), (1, 20, 20), (2, -5, -5), (3, -5, -5), (4, -5, -5), (5, 20, 20)),
+    }
+    by_angle = tuple(
+        (
+            angle,
+            tuple(
+                CellRegistration(
+                    row=cell,
+                    column=0,
+                    down=down,
+                    across=across,
+                    rotation_deg=angle,
+                    correlation=0.9,
+                    overlap=100,
+                )
+                for cell, down, across in cells
+            ),
+        )
+        for angle, cells in layout.items()
+    )
+    # Every cell correlates equally at both orientations, so the best-over-angles
+    # answer is the first orientation searched, which is what the original rule
+    # sees and the variant does not have to.
+    return Registration(
+        matches=by_angle[0][1],
+        by_angle=by_angle,
+        angles_deg=tuple(layout),
+        correlations=12,
+    )
+
+
+def test_the_tolerance_decides_how_many_orientations_count_as_the_peak() -> None:
+    registration = two_peaks()
+    settings: dict[str, object] = {
+        "consensus": ConsensusRule.HISTOGRAM_MODE,
+        "translation_bin": 2.0,
+    }
+
+    tight = score_high(registration, high(high_tolerance=0, **settings))
+    loose = score_high(registration, high(high_tolerance=1, **settings))
+
+    assert tight.peak == loose.peak == 4
+    assert tight.high_angles_deg == (0.0,)
+    assert loose.high_angles_deg == (0.0, 2.0)
+    assert tight.cells == ((0, 0), (1, 0), (2, 0), (3, 0))
+    assert loose.cells == ((0, 0), (1, 0), (2, 0), (3, 0), (4, 0))
+
+
+def test_the_variant_recovers_a_cell_the_single_consensus_discards() -> None:
+    # Why the variant exists, on the construction that shows it. Cell four agrees
+    # with cells two and three at the second orientation and with nobody at the
+    # first, so the rule that keeps one orientation throws it away.
+    registration = two_peaks()
+    settings: dict[str, object] = {
+        "consensus": ConsensusRule.HISTOGRAM_MODE,
+        "translation_bin": 2.0,
+    }
+
+    original = score(
+        registration, rule(rotation_threshold_deg=0.0, rotation_bin_deg=2.0, **settings)
+    )
+    variant = score_high(registration, high(high_tolerance=1, **settings))
+    only_original, only_high = disagreements(original, variant)
+
+    assert original.congruent == 4
+    assert variant.congruent == 5
+    assert only_original == ()
+    assert only_high == ((4, 0),)
+
+
+def test_a_pair_where_no_orientation_holds_two_agreeing_cells_scores_nothing() -> None:
+    # Every orientation counts zero, so there is no peak to be near. Naming every
+    # orientation as within tolerance of a peak of nothing would report the whole
+    # search as the region of agreement.
+    registration = two_peaks()
+
+    variant = score_high(registration, high(correlation_threshold=0.99))
+
+    assert variant.peak == 0
+    assert variant.congruent == 0
+    assert variant.high_angles_deg == ()
+    assert variant.discarded == variant.eligible
+
+
+def test_each_rule_says_which_rule_it_is() -> None:
+    # The clause asking that a report can state which rule produced a score.
+    registration = register(a_matching_subject(), a_reference(), SEARCH)
+
+    assert score(registration, rule()).rule == METHOD
+    assert score_high(registration, high()).rule == METHOD_HIGH
+
+
+def test_the_two_rules_are_recorded_separately() -> None:
+    original = dict(record(SEARCH, rule()).parameters)
+    variant = dict(record_high(SEARCH, high()).parameters)
+
+    assert record(SEARCH, rule()).method == METHOD
+    assert record_high(SEARCH, high()).method == METHOD_HIGH
+    assert variant["high_tolerance"] == 1
+    # The variant reads no rotation threshold, so its record states none. A
+    # record carrying one would say a threshold decided a count that never
+    # looked at it.
+    assert "rotation_threshold_deg" not in variant
+    assert "rotation_bin_deg" not in variant
+    assert "rotation_threshold_deg" in original
+
+
+def test_the_variant_settings_reach_the_manifest() -> None:
+    registry = Registry()
+    registry.register(RobustGaussianBandpass())
+
+    _, manifest = record_run(
+        role="input",
+        surface=a_reference(),
+        profile=ProfileRecord(name="a-profile", version="1"),
+        chain=[
+            Step(
+                identifier="bandpass",
+                parameters=BandpassParameters(
+                    short_cutoff=20.0, long_cutoff=120.0, robust_tuning=None, robust_passes=None
+                ),
+            )
+        ],
+        registry=registry,
+        seed=0,
+        determinism=DeterminismRecord(mode=RunMode.REFERENCE, threads=REFERENCE_THREADS),
+        environment=EnvironmentRecord(software_version="0.0.0", dependencies=()),
+        comparison=record_high(
+            SEARCH,
+            high(consensus=ConsensusRule.HISTOGRAM_MODE, translation_bin=2.0, high_tolerance=3),
+        ),
+    )
+
+    text = manifest.to_text()
+    for fragment in (
+        f'"method": "{METHOD_HIGH}"',
+        '"high_tolerance": 3',
+        '"translation_bin": 2.0',
+        '"consensus": "histogram-mode"',
+        '"rotation_step_deg": 2.0',
+    ):
+        assert fragment in text, f"{fragment} is not in the manifest"
+
+
+def test_the_record_and_the_variant_score_come_out_of_one_call() -> None:
+    found, written = score_pair_high(a_matching_subject(), a_reference(), SEARCH, high())
+
+    assert found.congruent == 16
+    assert written.method == METHOD_HIGH
+
+
+def test_a_registration_with_no_cell_is_refused_by_the_variant_too() -> None:
+    stripped = Registration(matches=(), by_angle=(), angles_deg=(0.0,), correlations=0)
+
+    with pytest.raises(ValueError, match="nothing to take a consensus over"):
+        score_high(stripped, high())
+
+
+def test_a_tolerance_that_is_not_a_whole_number_of_cells_is_refused() -> None:
+    with pytest.raises(TypeError, match="whole one"):
+        record_high(SEARCH, high(high_tolerance=1.5))
+
+
+def test_a_tolerance_given_as_a_boolean_is_refused() -> None:
+    with pytest.raises(TypeError, match="whole one"):
+        record_high(SEARCH, high(high_tolerance=True))
+
+
+def test_a_negative_tolerance_is_refused() -> None:
+    with pytest.raises(ValueError, match="cannot be negative"):
+        record_high(SEARCH, high(high_tolerance=-1))
+
+
+def test_the_variant_refuses_a_histogram_rule_with_no_bin_width() -> None:
+    with pytest.raises(ValueError, match="needs"):
+        record_high(SEARCH, high(consensus=ConsensusRule.HISTOGRAM_MODE))
+
+
+def test_the_variant_refuses_a_median_rule_that_states_a_bin_width() -> None:
+    with pytest.raises(ValueError, match="does not read"):
+        record_high(SEARCH, high(translation_bin=2.0))
+
+
+def from_layout(layout: dict[float, tuple[tuple[int, int, int, float], ...]]) -> Registration:
+    """A registration built from what each cell did at each orientation.
+
+    ``matches`` is derived here rather than stated, as the search derives it: the
+    orientation where a cell correlated best. A fixture that stated the two
+    independently could describe a search that never happened.
+    """
+    by_angle = tuple(
+        (
+            angle,
+            tuple(
+                CellRegistration(
+                    row=cell,
+                    column=0,
+                    down=down,
+                    across=across,
+                    rotation_deg=angle,
+                    correlation=correlation,
+                    overlap=100,
+                )
+                for cell, down, across, correlation in cells
+            ),
+        )
+        for angle, cells in layout.items()
+    )
+    best: dict[int, CellRegistration] = {}
+    for _, matches in by_angle:
+        for match in matches:
+            standing = best.get(match.row)
+            if standing is None or match.correlation > standing.correlation:
+                best[match.row] = match
+    return Registration(
+        matches=tuple(best[row] for row in sorted(best)),
+        by_angle=by_angle,
+        angles_deg=tuple(layout),
+        correlations=sum(len(matches) for _, matches in by_angle),
+    )
+
+
+def a_cell_whose_best_orientation_is_nowhere_near_the_peak() -> Registration:
+    """Six cells, four agreeing at one orientation and one stray agreeing elsewhere.
+
+    Cell five correlates best at an orientation where no other cell agrees with
+    it. Best over orientations it lands on the same displacement as the four, so
+    the single-consensus rule counts it. The variant does not, because the
+    orientation it came from is not near the busiest one.
+    """
+    return from_layout(
+        {
+            0.0: (
+                (0, 30, 30, 0.30),
+                (1, 30, 30, 0.30),
+                (2, 30, 30, 0.30),
+                (3, 30, 30, 0.30),
+                (4, 30, 30, 0.30),
+                (5, 0, 0, 0.95),
+            ),
+            2.0: (
+                (0, 30, 30, 0.30),
+                (1, 30, 30, 0.30),
+                (2, 30, 30, 0.30),
+                (3, 30, 30, 0.30),
+                (4, 30, 30, 0.30),
+                (5, 30, 30, 0.30),
+            ),
+            4.0: (
+                (0, 0, 0, 0.90),
+                (1, 0, 0, 0.90),
+                (2, 0, 0, 0.90),
+                (3, 0, 0, 0.90),
+                (4, 30, 30, 0.90),
+                (5, 30, 30, 0.90),
+            ),
+        }
+    )
+
+
+def test_the_single_consensus_rule_counts_a_cell_the_variant_does_not() -> None:
+    # The other direction of the disagreement, and the cost of the variant
+    # rather than its benefit. A subtraction of the two totals would report this
+    # as the variant losing one cell; naming them says which cell and why.
+    registration = a_cell_whose_best_orientation_is_nowhere_near_the_peak()
+    settings: dict[str, object] = {
+        "consensus": ConsensusRule.HISTOGRAM_MODE,
+        "translation_bin": 2.0,
+    }
+
+    original = score(
+        registration,
+        rule(rotation_threshold_deg=5.0, rotation_bin_deg=2.0, **settings),
+    )
+    variant = score_high(registration, high(high_tolerance=1, **settings))
+    only_original, only_high = disagreements(original, variant)
+
+    assert (original.congruent, variant.congruent) == (5, 4)
+    assert only_original == ((5, 0),)
+    assert only_high == ()
