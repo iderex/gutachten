@@ -4,6 +4,7 @@ gutachten
 gutachten.cli
 gutachten.compare
 gutachten.compare.cells
+gutachten.compare.cmc
 gutachten.compare.register
 gutachten.data
 gutachten.determinism
