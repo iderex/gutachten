@@ -53,9 +53,16 @@ check cannot see.
 
 A `gutachten.surface.Surface` and nothing else. The fields of that type, and why
 it has them, are in the module docstring of `src/gutachten/surface.py`. Reading
-a container yields heights in one internal unit with the file's declared unit
-kept in the record, missing samples as not-a-number, and the axis orientation
-the file declared rather than the one the reader assumed. A file that declares
-no unit is refused rather than guessed at, which is
-[#45](https://github.com/iderex/gutachten/issues/45). Nothing else in this
-project reads a container.
+a container yields heights in one internal unit, micrometres, with missing
+samples as not-a-number. Nothing else in this project reads a container.
+
+Two things the plan expected the file to declare, it does not. The format fixes
+lengths as metres and carries no unit element at all, so the refusal aimed at a
+missing unit would never fire and what `reader.py` refuses instead is an
+increment that is absent, not a number, not finite, or not positive. And no X3P
+file states an axis orientation, while a `Surface` requires one, so the reader
+records `Y_DOWN` and says in its own docstring that this is an assumption. A
+container this project wrote carries the orientation it was written from,
+because a comment is the only place the format leaves for it.
+[#45](https://github.com/iderex/gutachten/issues/45) is where both are argued
+and where the implausible height range check belongs; neither is settled here.

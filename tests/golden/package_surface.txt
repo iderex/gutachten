@@ -29,3 +29,5 @@ gutachten.transforms.outliers
 gutachten.transforms.pipeline
 gutachten.transforms.registry
 gutachten.x3p
+gutachten.x3p.reader
+gutachten.x3p.writer
