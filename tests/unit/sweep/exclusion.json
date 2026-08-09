@@ -1,0 +1,45 @@
+{
+  "name": "exclusion",
+  "version": "1",
+  "description": "The design that moves the drag mark exclusion, which is the setting #57 exists to make reachable. It runs the chain that applies every registered step, because the mask is only in a chain that masks. It is a fixture rather than a result: one pair, one parameter, and no claim about what excluding a drag mark is worth.",
+  "generator": "one-at-a-time",
+  "profile": "../../../profiles/every-step.json",
+  "surface": {
+    "rows": 256,
+    "columns": 256,
+    "pixel_spacing_um": 4.0,
+    "striae_depth_um": 2.0,
+    "striae_spacing_um": 40.0,
+    "striae_angle_deg": 0.0,
+    "form_depth_um": 12.0,
+    "firing_pin_radius_um": 160.0,
+    "firing_pin_depth_um": 25.0,
+    "drag_mark_width_um": 30.0,
+    "drag_mark_depth_um": 6.0,
+    "drag_mark_position": 0.25,
+    "noise_um": 0.2,
+    "edge_dropout_fraction": 0.0
+  },
+  "search": {
+    "grid": 3,
+    "minimum_valid": 0.4,
+    "rotation_range_deg": 0.0,
+    "rotation_step_deg": 2.0,
+    "translation_limit": 4
+  },
+  "rule": {
+    "down_threshold": 6.0,
+    "across_threshold": 6.0,
+    "rotation_threshold_deg": 2.0,
+    "correlation_threshold": 0.3,
+    "consensus": "median",
+    "translation_bin": null,
+    "rotation_bin_deg": null
+  },
+  "pairs": [
+    { "name": "same-source", "kind": "matching", "seed": 20260809 }
+  ],
+  "vary": [
+    { "parameter": "mask-marks.exclude_drag" }
+  ]
+}
