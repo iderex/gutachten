@@ -19,12 +19,13 @@ import io
 import zipfile
 
 import numpy as np
+import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from hypothesis.extra import numpy as npst
 
 from gutachten.surface import AxisOrientation, LengthUnit, Surface, TransformRecord
-from gutachten.x3p.reader import read_bytes
+from gutachten.x3p.reader import MAX_HEIGHT_RANGE_MICROMETRES, X3PError, read_bytes
 from gutachten.x3p.writer import DOCUMENT, PAYLOAD, to_bytes, write
 from tests.support.tolerance import assert_close
 from tests.unit.x3p.containers import a_surface
@@ -38,16 +39,29 @@ from tests.unit.x3p.containers import a_surface
 RTOL = 1e-12
 ATOL = 1e-9
 
+#: Half of the widest surface the reader will read, less a micrometre, so that
+#: no drawn pair of heights spans more than the reader admits even after the
+#: conversion out to metres and back has moved the last bits.
+WIDEST = MAX_HEIGHT_RANGE_MICROMETRES / 2.0 - 1.0
+
 #: A bounded height, or an absent measurement, drawn as two strategies because
 #: hypothesis refuses to conflate a bounded float with a not-a-number. The bound
 #: is there because the tolerance above is a statement about doubles rather than
 #: about the whole float range: a height of 1e300 micrometres is not a surface,
 #: and generating one would test the arithmetic of the conversion rather than the
 #: container.
+#:
+#: It is now also what the reader admits. Since the range check landed, a
+#: container whose measured samples span more than
+#: `MAX_HEIGHT_RANGE_MICROMETRES` is refused, so a surface drawn wider than that
+#: is one the writer produces and the reader declines. The property under test is
+#: the round trip, so the strategy stays inside the readable range and the
+#: asymmetry itself is asserted separately below rather than left as the reason a
+#: generated case fails.
 HEIGHTS = st.one_of(
     st.floats(
-        min_value=-1e4,
-        max_value=1e4,
+        min_value=-WIDEST,
+        max_value=WIDEST,
         allow_nan=False,
         allow_infinity=False,
         allow_subnormal=False,
@@ -245,3 +259,78 @@ def test_a_surface_in_another_unit_round_trips_to_the_same_measurement() -> None
         atol=ATOL,
         rtol=RTOL,
     )
+
+
+def test_one_measurement_declared_in_two_units_reads_to_one_surface() -> None:
+    """The same lengths written from millimetres and from micrometres agree.
+
+    The format carries no unit element at all, so the only place a unit exists
+    is on the surface handed to the writer, and this is the strongest form the
+    clause in [#45] can take here.
+
+    The two containers are not byte for byte identical and are not asserted to
+    be. A millimetre converted to metres and a micrometre converted to metres
+    reach the same number by two different multiplications, neither factor is a
+    power of two, and the results differ in the last bits. What is asserted is
+    the measurement, within the tolerance stated at the call site.
+
+    [#45]: https://github.com/iderex/gutachten/issues/45
+    """
+    lengths = np.array([[1.0, 2.0], [3.0, 4.0]])
+    in_micrometres = Surface(
+        heights=lengths,
+        spacing_y=4.0,
+        spacing_x=2.5,
+        unit=LengthUnit.MICROMETRE,
+        orientation=AxisOrientation.Y_DOWN,
+        source="one-measurement",
+    )
+    in_millimetres = Surface(
+        heights=lengths / LengthUnit.MILLIMETRE.micrometres,
+        spacing_y=4.0 / LengthUnit.MILLIMETRE.micrometres,
+        spacing_x=2.5 / LengthUnit.MILLIMETRE.micrometres,
+        unit=LengthUnit.MILLIMETRE,
+        orientation=AxisOrientation.Y_DOWN,
+        source="one-measurement",
+    )
+    from_millimetres = read_bytes(to_bytes(in_millimetres), source="one-measurement")
+    from_micrometres = read_bytes(to_bytes(in_micrometres), source="one-measurement")
+    assert from_millimetres.unit is from_micrometres.unit is LengthUnit.MICROMETRE
+    assert_close(
+        from_millimetres.observed,
+        from_micrometres.observed,
+        what="one measurement declared in two units",
+        atol=ATOL,
+        rtol=RTOL,
+    )
+    assert_close(
+        [from_millimetres.spacing_y, from_millimetres.spacing_x],
+        [from_micrometres.spacing_y, from_micrometres.spacing_x],
+        what="one spacing declared in two units",
+        atol=ATOL,
+        rtol=RTOL,
+    )
+
+
+def test_the_writer_will_write_a_surface_this_reader_will_not_read() -> None:
+    """The asymmetry, asserted rather than left for a generated case to discover.
+
+    The writer writes whatever surface it is given. The range check is aimed at
+    bytes arriving from outside, where no unit is declared and nothing in the
+    container contradicts a writer that used the wrong one, so it refuses on the
+    reading side only. A surface with a millimetre of relief is therefore
+    writable here and not readable back, and that is the state of the tree rather
+    than an oversight.
+    """
+    wide = Surface(
+        heights=np.array([[0.0, MAX_HEIGHT_RANGE_MICROMETRES * 2.0]]),
+        spacing_y=1.0,
+        spacing_x=1.0,
+        unit=LengthUnit.MICROMETRE,
+        orientation=AxisOrientation.Y_DOWN,
+        source="wider-than-the-reader-admits",
+    )
+    written = to_bytes(wide)
+    with pytest.raises(X3PError) as raised:
+        read_bytes(written, source="wider-than-the-reader-admits")
+    assert raised.value.reason == "height-range-implausible"

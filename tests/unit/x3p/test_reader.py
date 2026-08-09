@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from gutachten.surface import AxisOrientation, LengthUnit
-from gutachten.x3p.reader import X3PError, read, read_bytes
+from gutachten.x3p.reader import MAX_HEIGHT_RANGE_MICROMETRES, X3PError, read, read_bytes
 from gutachten.x3p.writer import DOCUMENT, PAYLOAD, to_bytes
 from tests.support.tolerance import assert_close
 from tests.unit.x3p.containers import FIXTURES, a_surface, digest_of, members, repack
@@ -183,3 +183,73 @@ def test_a_truncated_archive_is_refused() -> None:
     with pytest.raises(X3PError) as raised:
         read_bytes(written[: len(written) // 2], source="half-a-file")
     assert raised.value.reason == "not-a-container"
+
+
+def test_a_surface_mis_scaled_by_a_thousand_is_refused_with_both_numbers_named() -> None:
+    """The factor of a thousand, and what whoever meets it is given to work with.
+
+    The container is well formed in every other way, so a reader without the
+    range check accepts it and every step after the reader processes a surface
+    wrong by three orders of magnitude without complaint. The message carries
+    the span that arrived and the bound it was judged against, because a refusal
+    naming neither cannot tell a file that is slightly over from one that is
+    absurd.
+    """
+    with pytest.raises(X3PError) as raised:
+        read_bytes(built("a-surface-mis-scaled-by-a-thousand"), source="in-millimetres")
+    assert raised.value.reason == "height-range-implausible"
+    message = str(raised.value)
+    assert str(MAX_HEIGHT_RANGE_MICROMETRES) in message
+    named = float(message.split(" span ")[1].split(" ")[0])
+    observed = a_surface().observed
+    assert_close(
+        named,
+        (float(observed.max()) - float(observed.min())) * 1000.0,
+        what="the span the refusal names",
+        atol=ATOL,
+        rtol=RTOL,
+    )
+
+
+def test_the_same_surface_at_the_scale_the_format_fixes_reads() -> None:
+    """The other side of the guard, which is what stops it being a refusal of everything.
+
+    The two containers differ in one factor and in nothing else, so a guard that
+    refused both would pass the test above and be useless, and this is what
+    catches a bound set below what a cartridge case is.
+    """
+    back = read_bytes(built("written-by-this-project"), source="at-the-right-scale")
+    assert_close(
+        back.observed,
+        a_surface().observed,
+        what="heights at the scale the format fixes",
+        atol=ATOL,
+        rtol=RTOL,
+    )
+    assert float(back.observed.max()) - float(back.observed.min()) < MAX_HEIGHT_RANGE_MICROMETRES
+
+
+def test_the_range_is_judged_on_the_measured_samples_and_not_on_the_absences() -> None:
+    """A maximum over an array carrying not-a-number is not-a-number.
+
+    That spelling of the guard compares against not-a-number, which is false for
+    every container, so it passes the whole corpus while refusing nothing. Every
+    real scan loses samples at its edge, so it would have been invisible.
+    """
+    mis_scaled = built("a-surface-mis-scaled-by-a-thousand")
+    assert np.isnan(np.frombuffer(members()[PAYLOAD], dtype="<f8")).any()
+    with pytest.raises(X3PError) as raised:
+        read_bytes(mis_scaled, source="with-a-gap-and-mis-scaled")
+    assert raised.value.reason == "height-range-implausible"
+
+
+def test_a_container_in_which_nothing_was_measured_reads() -> None:
+    """No span, so nothing about the scale is in question and nothing is refused.
+
+    Whether an entirely absent surface is worth reading at all is a separate
+    question, and answering it inside this refusal would make the reason on the
+    error a statement the container does not support.
+    """
+    back = read_bytes(built("every-sample-absent"), source="nothing-measured")
+    assert back.missing.all()
+    assert back.observed.size == 0
