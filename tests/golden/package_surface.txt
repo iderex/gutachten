@@ -6,6 +6,7 @@ gutachten.compare
 gutachten.compare.cells
 gutachten.compare.cmc
 gutachten.compare.register
+gutachten.conclusions
 gutachten.data
 gutachten.determinism
 gutachten.manifest
