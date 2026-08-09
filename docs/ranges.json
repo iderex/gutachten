@@ -1,0 +1,603 @@
+{
+  "version": "1",
+  "description": "The plausible range of every parameter the sweep can reach, with the source of each bound. What a bound is worth is the source field, and a bound whose source is a judgement is this repository's rather than the field's. docs/ranges.md is the argument and the counts.",
+  "sources": ["published", "standardised", "physical", "judgement"],
+  "parameters": {
+    "trim-edge.width": {
+      "kind": "interval",
+      "lower": {
+        "value": 4.0,
+        "source": "physical",
+        "where": "One sampling interval at the 4 micrometre spacing gutachten.synth.SurfaceParameters generates at. A width that rounds to no samples is refused by gutachten.transforms.edge, so no smaller width is one this step can run."
+      },
+      "upper": {
+        "value": 400.0,
+        "source": "judgement",
+        "where": "Trimming 400 micrometres from each side of the 1024 micrometre field leaves 224 micrometres across the middle, under a quarter of the extent. Nothing states this bound and no measurement fixes it."
+      },
+      "literature": "The reference chain crops with preProcess_crop(region = \"exterior\", offset = -30), which is 30 samples and so 120 micrometres at a 4 micrometre spacing. A single value with no range. profiles/published-chain.json carries the citation and the date it was read."
+    },
+    "trim-edge.criterion": {
+      "kind": "set",
+      "values": [
+        {
+          "value": "frame",
+          "source": "published",
+          "where": "Cropping the exterior is measuring in from the boundary of the array, and the reference chain states that operation. The name is this tree's and profiles/published-chain.json records the mapping."
+        },
+        {
+          "value": "grow",
+          "source": "judgement",
+          "where": "The other value the step admits, measuring out from what is already missing. Nothing published names it and it is in the set so that the alternative is a configuration rather than a code change."
+        }
+      ]
+    },
+    "level.model": {
+      "kind": "set",
+      "values": [
+        {
+          "value": "plane",
+          "source": "judgement",
+          "where": "The reference chain removes a trend by quantile regression at the median and does not say which form that regression fits. A plane is this tree's reading of it, and profiles/published-chain.json calls the same value its lowest confidence entry."
+        },
+        {
+          "value": "polynomial",
+          "source": "judgement",
+          "where": "A curved form, kept in the set because whether a primer face is better described by one than by a plane is a question the sweep exists to answer rather than one this file settles."
+        },
+        {
+          "value": "sphere",
+          "source": "judgement",
+          "where": "The third form the step implements. As with the polynomial, nothing here states that it belongs on a primer face."
+        }
+      ]
+    },
+    "level.order": {
+      "kind": "interval",
+      "lower": {
+        "value": 2,
+        "source": "judgement",
+        "where": "The lowest order the polynomial model admits. gutachten.transforms.level refuses order zero as the removal of the mean and order one as a plane under a second name, and both refusals are choices made in this repository rather than limits of the measurement."
+      },
+      "upper": {
+        "value": 4,
+        "source": "judgement",
+        "where": "Nothing refuses a higher order. Past the fourth the fitted form starts to remove wavelengths the bandpass is there to keep, and where that begins is not measured anywhere in this tree."
+      },
+      "null": {
+        "source": "judgement",
+        "where": "Null is what the plane and the sphere carry, and the step refuses an order stated beside either. So the null is not a value the sweep may pick freely; it is the value this field takes whenever model is not the polynomial."
+      }
+    },
+    "level.robust_tuning": {
+      "kind": "interval",
+      "lower": {
+        "value": 3.0,
+        "source": "judgement",
+        "where": "Below three residual scales the biweight downweights samples that are ordinary rather than extreme. Where that begins on a levelling residual is not measured here."
+      },
+      "upper": {
+        "value": 6.0,
+        "source": "judgement",
+        "where": "Above six the reweighting leaves almost every residual at full weight and the fit is an ordinary least squares one recorded as a robust one."
+      },
+      "null": {
+        "source": "judgement",
+        "where": "Null is the ordinary least squares fit. It is a configuration rather than a bound, and the step refuses it stated beside a pass count."
+      },
+      "literature": "The chain being reproduced fits at the median, which is robust by a different estimator with no tuning constant to carry across. 4.0 is what docs/filtering.md measured this tree's robust filter with, and docs/filtering.md also records that the constant ISO 16610-71 fixes internally could not be read."
+    },
+    "level.robust_passes": {
+      "kind": "interval",
+      "lower": {
+        "value": 1,
+        "source": "judgement",
+        "where": "One pass is one reweighting, which is the smallest thing that is robust at all."
+      },
+      "upper": {
+        "value": 5,
+        "source": "judgement",
+        "where": "Whether the reweighting has settled by the fifth pass is not measured in this tree on a levelling residual. The bound is a stopping point, not a convergence result."
+      },
+      "null": {
+        "source": "judgement",
+        "where": "Null is the ordinary least squares fit, set together with robust_tuning."
+      }
+    },
+    "bandpass.short_cutoff": {
+      "kind": "interval",
+      "lower": {
+        "value": 8.0,
+        "source": "physical",
+        "where": "Two sampling intervals at the 4 micrometre spacing this tree generates at. A wavelength below twice the sample spacing is not represented in the samples at all, so a cutoff there removes nothing that was measured."
+      },
+      "upper": {
+        "value": 32.0,
+        "source": "judgement",
+        "where": "Twice the value the reference chain states. Nothing fixes the factor of two; it is a bracket chosen here so the published value is not an end point of its own range."
+      },
+      "literature": "The reference chain calls preProcess_gaussFilter() with no arguments, documented as wavelength = c(16, 500), the smaller of which is the short cutoff. A single value with no range, and its unit is not stated on that page. profiles/published-chain.json carries the citation."
+    },
+    "bandpass.long_cutoff": {
+      "kind": "interval",
+      "lower": {
+        "value": 100.0,
+        "source": "judgement",
+        "where": "Below 100 micrometres the long cutoff starts to remove the striae spacing the generator digs at 40 micrometres, so the band would exclude the signal the comparison is about."
+      },
+      "upper": {
+        "value": 1000.0,
+        "source": "physical",
+        "where": "The field this tree generates is 1024 micrometres across, 256 rows at 4 micrometres. A wavelength longer than the field does not complete a cycle in it, so removing it removes the mean rather than a form."
+      },
+      "literature": "The larger of the two wavelengths of the same reference default, 500. A single value with no range."
+    },
+    "bandpass.robust_tuning": {
+      "kind": "interval",
+      "lower": {
+        "value": 3.0,
+        "source": "judgement",
+        "where": "As level.robust_tuning. Below three residual scales the biweight is downweighting ordinary residuals."
+      },
+      "upper": {
+        "value": 6.0,
+        "source": "judgement",
+        "where": "As level.robust_tuning. Above six the filter is the linear one recorded as robust."
+      },
+      "null": {
+        "source": "judgement",
+        "where": "Null is the linear filter, which is what the reference chain runs. It is a configuration rather than a bound."
+      },
+      "literature": "ISO 16610-71:2014 fixes a tuning constant for the robust reweighting internally. docs/filtering.md records that the text of the standard is not public and that this constant could not be read, which is why the range here is a judgement and not a standardised one."
+    },
+    "bandpass.robust_passes": {
+      "kind": "interval",
+      "lower": {
+        "value": 1,
+        "source": "judgement",
+        "where": "One reweighting is the smallest robust run."
+      },
+      "upper": {
+        "value": 5,
+        "source": "judgement",
+        "where": "docs/filtering.md measures this filter at three passes and does not measure where the reweighting settles. The bound is a stopping point."
+      },
+      "null": {
+        "source": "judgement",
+        "where": "Null is the linear filter, set together with robust_tuning."
+      }
+    },
+    "mask-firing-pin.method": {
+      "kind": "set",
+      "values": [
+        {
+          "value": "fixed",
+          "source": "published",
+          "where": "Masking a circle the analyst states is one of the ways the published chains remove the impression. What no source states is which circle, which is what the three declared fields below are."
+        },
+        {
+          "value": "detected",
+          "source": "published",
+          "where": "Finding the crater on the surface is the other of the two this step implements, and it is the one the gate proves against ground truth. gutachten.transforms.firing_pin says why the hand drawn third is not implemented at all."
+        }
+      ]
+    },
+    "mask-firing-pin.declared_centre_y": {
+      "kind": "interval",
+      "lower": {
+        "value": -160.0,
+        "source": "physical",
+        "where": "The centre is measured from the centre of the field. At 160 micrometres off centre the declared circle of the same radius reaches the edge of the impression the generator digs, and past that the region masked is mostly surface that carries striae."
+      },
+      "upper": {
+        "value": 160.0,
+        "source": "physical",
+        "where": "The same distance the other way along the row axis."
+      },
+      "null": {
+        "source": "judgement",
+        "where": "Null is what the detected method carries, and the step refuses the field stated beside it. The null is therefore fixed by the method rather than free."
+      }
+    },
+    "mask-firing-pin.declared_centre_x": {
+      "kind": "interval",
+      "lower": {
+        "value": -160.0,
+        "source": "physical",
+        "where": "As declared_centre_y, along the column axis."
+      },
+      "upper": {
+        "value": 160.0,
+        "source": "physical",
+        "where": "As declared_centre_y, along the column axis."
+      },
+      "null": {
+        "source": "judgement",
+        "where": "As declared_centre_y."
+      }
+    },
+    "mask-firing-pin.declared_radius": {
+      "kind": "interval",
+      "lower": {
+        "value": 80.0,
+        "source": "judgement",
+        "where": "Half the 160 micrometre impression the generator digs. A declared circle smaller than that leaves crater wall inside the comparison, and how much of it is tolerable is not measured here."
+      },
+      "upper": {
+        "value": 320.0,
+        "source": "judgement",
+        "where": "Twice that impression. The step refuses a region covering every measured sample, which on the 1024 micrometre field is further out than this, so the refusal is not what fixes the bound."
+      },
+      "null": {
+        "source": "judgement",
+        "where": "Null is what the detected method carries."
+      }
+    },
+    "mask-firing-pin.depth_threshold": {
+      "kind": "interval",
+      "lower": {
+        "value": 5.0,
+        "source": "judgement",
+        "where": "Below the 12 micrometre peak to peak form the generator lays down, a threshold on depth below the median starts to select the form rather than the crater. 5 recovers the same region as 10 and 15 on a generated surface, which is measured in tests/unit/transforms/test_firing_pin.py."
+      },
+      "upper": {
+        "value": 20.0,
+        "source": "judgement",
+        "where": "Below the 25 micrometre impression the generator digs, so a threshold in this range can still be tripped by the crater. Neither number is known before the step runs on a real scan."
+      },
+      "null": {
+        "source": "judgement",
+        "where": "Null is what the fixed method carries, and the step refuses the field stated beside it."
+      }
+    },
+    "mask-firing-pin.dilation": {
+      "kind": "interval",
+      "lower": {
+        "value": 0.0,
+        "source": "judgement",
+        "where": "Zero masks the region and nothing further, which the step admits and records as a configuration. It is the end of the range rather than a recommendation."
+      },
+      "upper": {
+        "value": 40.0,
+        "source": "judgement",
+        "where": "Ten samples at a 4 micrometre spacing. How far the crater wall contaminates the samples beyond the detected edge is not measured anywhere in this tree, so this bound has nothing behind it but the wish not to eat a quarter of the impression radius."
+      }
+    },
+    "mask-marks.drag_width": {
+      "kind": "interval",
+      "lower": {
+        "value": 4.0,
+        "source": "physical",
+        "where": "One sampling interval. A band narrower than one sample masks nothing on any row."
+      },
+      "upper": {
+        "value": 120.0,
+        "source": "judgement",
+        "where": "Four times the 30 micrometre groove the generator digs, gutachten.synth.SurfaceParameters.drag_mark_width_um. Nothing measures the width of a real drag mark before this step is asked to mask it."
+      },
+      "literature": "Nothing read here states a width. The published chains exclude the mark rather than describing it."
+    },
+    "mask-marks.drag_position": {
+      "kind": "interval",
+      "lower": {
+        "value": -512.0,
+        "source": "physical",
+        "where": "Half the 1024 micrometre extent, which puts the middle of the band on the edge of the field. Further out and the band leaves the surface, which the step refuses when the exclusion was asked for."
+      },
+      "upper": {
+        "value": 512.0,
+        "source": "physical",
+        "where": "The same distance the other way."
+      }
+    },
+    "mask-marks.drag_angle_deg": {
+      "kind": "interval",
+      "lower": {
+        "value": 0.0,
+        "source": "physical",
+        "where": "A band has no head and no tail, so its direction repeats every half turn and the range covers every distinct band exactly once."
+      },
+      "upper": {
+        "value": 180.0,
+        "source": "physical",
+        "where": "The other end of the half turn."
+      }
+    },
+    "mask-marks.exclude_drag": {
+      "kind": "set",
+      "values": [
+        {
+          "value": true,
+          "source": "published",
+          "where": "Excluding the drag mark is what the published chains do, and it is stated as part of the method rather than as a setting."
+        },
+        {
+          "value": false,
+          "source": "judgement",
+          "where": "The configuration issue #57 exists to make reachable. A drag mark can be highly informative and is also unstable between firings, and what excluding it costs is the number the sweep is being built to produce."
+        }
+      ]
+    },
+    "mask-marks.extractor_radius": {
+      "kind": "interval",
+      "lower": {
+        "value": 4.0,
+        "source": "physical",
+        "where": "One sampling interval. A disc smaller than one sample masks nothing."
+      },
+      "upper": {
+        "value": 160.0,
+        "source": "judgement",
+        "where": "The radius of the firing pin impression the generator digs, used here as the largest disc anybody would call an extractor mark. The generator has no extractor mark, so no value in this range is checked against anything."
+      }
+    },
+    "mask-marks.extractor_distance": {
+      "kind": "interval",
+      "lower": {
+        "value": 0.0,
+        "source": "physical",
+        "where": "Zero puts the disc at the centre of the field. It is the centre of the polar description rather than a place an extractor mark sits."
+      },
+      "upper": {
+        "value": 512.0,
+        "source": "physical",
+        "where": "Half the 1024 micrometre extent, which puts the centre of the disc on the edge of the field."
+      }
+    },
+    "mask-marks.extractor_angle_deg": {
+      "kind": "interval",
+      "lower": {
+        "value": 0.0,
+        "source": "physical",
+        "where": "A direction from the centre of the field, so the range is a whole turn and covers every distinct position once."
+      },
+      "upper": {
+        "value": 360.0,
+        "source": "physical",
+        "where": "The other end of the turn."
+      }
+    },
+    "mask-marks.exclude_extractor": {
+      "kind": "set",
+      "values": [
+        {
+          "value": true,
+          "source": "published",
+          "where": "As exclude_drag: the published chains exclude the extractor mark."
+        },
+        {
+          "value": false,
+          "source": "judgement",
+          "where": "As exclude_drag: the alternative is a reachable configuration and what it costs is not known."
+        }
+      ]
+    },
+    "reject-outliers.criterion": {
+      "kind": "set",
+      "values": [
+        {
+          "value": "median-absolute-deviation",
+          "source": "judgement",
+          "where": "The robust of the two. gutachten.transforms.outliers argues for it because the other is inflated by the spikes it is being asked to find. The argument is this tree's."
+        },
+        {
+          "value": "standard-deviation",
+          "source": "judgement",
+          "where": "The other criterion the step admits, kept in the set so the cost of the argument above is a sweep result rather than an assertion."
+        }
+      ]
+    },
+    "reject-outliers.threshold": {
+      "kind": "interval",
+      "lower": {
+        "value": 2.0,
+        "source": "judgement",
+        "where": "Two spreads from the centre rejects a large part of an ordinary surface. The step refuses a threshold that rejects every measured sample, which is further in than this."
+      },
+      "upper": {
+        "value": 8.0,
+        "source": "judgement",
+        "where": "Above eight spreads almost nothing is rejected and the step records itself as having run. Where exactly that begins depends on the surface and is not measured here."
+      }
+    },
+    "reject-outliers.neighbourhood": {
+      "kind": "interval",
+      "lower": {
+        "value": 8.0,
+        "source": "physical",
+        "where": "Two sampling intervals. The step refuses a radius that reaches no neighbour along an axis, which is what a smaller radius does."
+      },
+      "upper": {
+        "value": 512.0,
+        "source": "physical",
+        "where": "Half the 1024 micrometre extent. A neighbourhood that size covers the field from any sample in it, which is the whole surface route under another name."
+      },
+      "null": {
+        "source": "judgement",
+        "where": "Null takes the centre and the spread over the whole surface. It is a different measurement rather than the end of this range, and the step records it as one."
+      }
+    },
+    "compare.register.grid": {
+      "kind": "interval",
+      "lower": {
+        "value": 3,
+        "source": "judgement",
+        "where": "Nine cells is the smallest grid the registration tests in this tree measure a recovery on, tests/unit/compare/test_register.py. A grid of one is admitted by the code and counts a score out of one, which is not a count a congruence rule can read."
+      },
+      "upper": {
+        "value": 12,
+        "source": "judgement",
+        "where": "At twelve on the 1024 micrometre field a cell is 85 micrometres across, which is two striae spacings. Below that a cell carries too little structure to correlate on, and where that limit sits is not measured here."
+      },
+      "literature": "The published descriptions of this method state a cell grid as part of the method. No value from one was read here, and the bound above is this repository's."
+    },
+    "compare.register.minimum_valid": {
+      "kind": "interval",
+      "lower": {
+        "value": 0.1,
+        "source": "judgement",
+        "where": "A tenth of a cell measured is the least this file admits. The code refuses zero, because a cell with nothing measured in it returns a number about nothing."
+      },
+      "upper": {
+        "value": 1.0,
+        "source": "physical",
+        "where": "A proportion of a cell cannot exceed all of it. The code refuses anything above one for the same reason."
+      }
+    },
+    "compare.register.rotation_range_deg": {
+      "kind": "interval",
+      "lower": {
+        "value": 0.0,
+        "source": "judgement",
+        "where": "Zero searches the one orientation the surfaces were handed at. It is the end of the range and it is what a pair already registered by hand would use."
+      },
+      "upper": {
+        "value": 30.0,
+        "source": "judgement",
+        "where": "The range is searched both ways, so thirty is a sixty degree span. A wider range hands a non matching pair more orientations to find a spurious peak at, which docs/registration.md names as a route from a search setting to a false positive rate. The code refuses 180 and above; that refusal is not what fixes this bound."
+      }
+    },
+    "compare.register.rotation_step_deg": {
+      "kind": "interval",
+      "lower": {
+        "value": 0.25,
+        "source": "judgement",
+        "where": "The cost of a search is proportional to the number of orientations, and docs/registration.md measures one 11 orientation search at about a minute on a 768 by 768 field. A quarter degree over a 30 degree range is 241 orientations, which is the finest step a design costed from that page can afford."
+      },
+      "upper": {
+        "value": 5.0,
+        "source": "judgement",
+        "where": "A step coarser than five degrees steps over the angle a genuine match sits at on any range in this file. How coarse is too coarse is a sweep result and not a measurement in this tree."
+      }
+    },
+    "compare.register.translation_limit": {
+      "kind": "interval",
+      "lower": {
+        "value": 0,
+        "source": "physical",
+        "where": "Zero admits only the placement where the cell has not moved. The code refuses a negative limit because it is a distance in samples."
+      },
+      "upper": {
+        "value": 32,
+        "source": "judgement",
+        "where": "A quarter of the 128 sample side of a cell on a 256 sample field at a grid of two, and more than the two and three sample displacements the registration tests recover. Nothing states it."
+      }
+    },
+    "compare.cmc.down_threshold": {
+      "kind": "interval",
+      "lower": {
+        "value": 0.0,
+        "source": "physical",
+        "where": "How far from the consensus a cell may sit and still count cannot be negative, and the code refuses it. Zero counts only cells at the consensus exactly."
+      },
+      "upper": {
+        "value": 20.0,
+        "source": "judgement",
+        "where": "Twenty samples on a 256 sample field is under a tenth of the extent. Past that the threshold admits cells that agree with the consensus about very little."
+      },
+      "literature": "The published descriptions of this method quote fixed values for the four identification parameters in the same sentence as the method itself. No value from one was read here, and gutachten.compare.cmc argues that quoting them as constants is what makes them worth sweeping."
+    },
+    "compare.cmc.across_threshold": {
+      "kind": "interval",
+      "lower": {
+        "value": 0.0,
+        "source": "physical",
+        "where": "As down_threshold, along the other axis."
+      },
+      "upper": {
+        "value": 20.0,
+        "source": "judgement",
+        "where": "As down_threshold, along the other axis."
+      }
+    },
+    "compare.cmc.rotation_threshold_deg": {
+      "kind": "interval",
+      "lower": {
+        "value": 0.0,
+        "source": "physical",
+        "where": "A distance from the consensus orientation cannot be negative, and the code refuses it."
+      },
+      "upper": {
+        "value": 10.0,
+        "source": "judgement",
+        "where": "A third of the widest rotation range in this file. A threshold wider than the range searched counts every cell whatever its orientation, which is the rule switched off under its own name."
+      }
+    },
+    "compare.cmc.correlation_threshold": {
+      "kind": "interval",
+      "lower": {
+        "value": 0.0,
+        "source": "judgement",
+        "where": "Below zero a cell counts as congruent while correlating negatively with the place it was matched to. The code admits down to minus one; this file does not."
+      },
+      "upper": {
+        "value": 0.9,
+        "source": "judgement",
+        "where": "Above 0.9 almost no cell of a real scan clears it. The code admits up to one, at which no cell can ever be congruent."
+      }
+    },
+    "compare.cmc.consensus": {
+      "kind": "set",
+      "values": [
+        {
+          "value": "median",
+          "source": "judgement",
+          "where": "The middle value of each quantity. It declares nothing beyond itself and moves smoothly as cells are added. The argument is in gutachten.compare.cmc and is this tree's."
+        },
+        {
+          "value": "histogram-mode",
+          "source": "published",
+          "where": "Binning each quantity and taking the centre of the fullest bin is what the published descriptions of this method do. What they do not state is the bin width, which is the parameter below."
+        }
+      ]
+    },
+    "compare.cmc.translation_bin": {
+      "kind": "interval",
+      "lower": {
+        "value": 1.0,
+        "source": "physical",
+        "where": "One sample. A displacement is measured in whole samples, so a bin narrower than one puts every cell in a bin of its own and the fullest of them holds one."
+      },
+      "upper": {
+        "value": 10.0,
+        "source": "judgement",
+        "where": "Half the widest displacement threshold in this file. A bin wider than the threshold makes the consensus coarser than the rule judging against it."
+      },
+      "null": {
+        "source": "judgement",
+        "where": "Null is what the median rule carries, and the code refuses a width stated beside it. Fixed by the consensus rule rather than free."
+      }
+    },
+    "compare.cmc.rotation_bin_deg": {
+      "kind": "interval",
+      "lower": {
+        "value": 0.25,
+        "source": "physical",
+        "where": "The finest rotation step in this file. The search visits orientations on a grid of that step, so a bin narrower than the step holds at most one orientation."
+      },
+      "upper": {
+        "value": 5.0,
+        "source": "judgement",
+        "where": "The coarsest rotation step in this file. A bin wider than the step the search moved in merges orientations the search kept apart."
+      },
+      "null": {
+        "source": "judgement",
+        "where": "Null is what the median rule carries."
+      }
+    },
+    "compare.cmc.high_tolerance": {
+      "kind": "interval",
+      "lower": {
+        "value": 0,
+        "source": "judgement",
+        "where": "Zero keeps only the busiest orientation, which is the high variant reduced to one peak. It is the end of the range rather than a setting anybody recommends."
+      },
+      "upper": {
+        "value": 5,
+        "source": "judgement",
+        "where": "Five cells below the peak. On the grids in this file that is a large part of a cell count, and where the variant stops being a variant is a sweep result."
+      },
+      "literature": "The published description of the high variant states a tolerance in cells. No value from one was read here."
+    }
+  }
+}

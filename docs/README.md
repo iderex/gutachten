@@ -16,3 +16,6 @@ they do not disagree.
 - [registration.md](registration.md): what the search over translation and
   rotation does, what its four settings decide, and what one search costs in
   correlations and in seconds.
+- [ranges.md](ranges.md): the plausible range declared for every parameter a
+  sweep can reach, where each bound came from, and how much of the set is this
+  repository's own judgement rather than anybody's published value.
