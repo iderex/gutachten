@@ -75,7 +75,9 @@ import hashlib
 import io
 import json
 import posixpath
+import warnings
 import zipfile
+import zlib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
@@ -111,6 +113,7 @@ REASONS: Final[tuple[str, ...]] = (
     "not-a-number",
     "increment-not-positive",
     "size-disagrees-with-the-payload",
+    "overlapping-entries",
     "point-data-checksum-mismatch",
     "height-not-finite",
     "height-range-implausible",
@@ -318,6 +321,45 @@ def _member(archive: zipfile.ZipFile, name: str) -> bytes:
     A header that lies the other way, declaring less than the member holds, is
     caught by the archive's own checksum when the member is read, and that
     arrives here as a container that could not be read.
+
+    Five things can refuse the same member and they are five different
+    exceptions. The archive layer raises its own error. A stream that ends early
+    raises an end of file. The deflate decompressor raises out of zlib, with a
+    message about distance codes, and the other two decompressors this format
+    admits raise an operating system error about an invalid stream instead. And
+    an entry whose recorded position does not point into this archive raises a
+    plain value error out of the seek underneath, which is the one nobody would
+    predict. All but the first two were reaching the caller as tracebacks until
+    the fuzz session in #115 produced one of each.
+
+    All five are the same statement to a reader: this member did not come out of
+    this archive. The value error and the operating system error are the broad
+    ones, and what bounds them is that the block below holds two calls, both into
+    the archive layer, over an archive already in memory, and nothing of this
+    project's own that could raise either and be swallowed.
+
+    Two more are a different statement. A member stored under a compression
+    method the zip layer does not implement, and a member the archive says is
+    encrypted, are constructs that were read and declined rather than archives
+    that are malformed, so they are refused under the reason that says so. The
+    session in #115 reached both by damaging the fields that declare them, which
+    is also how a container genuinely using either would arrive.
+
+    An evidence file this project cannot open without a password is a real thing
+    and not only a damaged byte. Refusing it by name, rather than letting a
+    runtime error out of the standard library reach the caller, is what tells
+    whoever meets it that the file needs something rather than that it is broken.
+
+    The last one is not an exception at all until this function makes it one. An
+    archive whose entries overlap is the other zip bomb shape beside the declared
+    size this function already bounds: the same bytes are counted as the content
+    of several members, so a small archive expands to many times its size. The
+    standard library only warns about one of the two ways that is written, and a
+    warning is a message the caller's filter decides the fate of. Under the
+    suite's filter it is an error and under an operator's default it is a line on
+    the terminal that the read then ignores, which is the worse half and the one
+    nobody would see. It is turned into a refusal here so the behaviour is the
+    reader's rather than the caller's.
     """
     info = archive.getinfo(name)
     if info.file_size > MAX_ENTRY_BYTES:
@@ -328,13 +370,27 @@ def _member(archive: zipfile.ZipFile, name: str) -> bytes:
             "is made to allocate a large amount of memory.",
         )
     try:
-        with archive.open(info) as handle:
-            return handle.read()
-    except (zipfile.BadZipFile, EOFError) as broken:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            with archive.open(info) as handle:
+                return handle.read()
+    except UserWarning as overlapping:
+        raise X3PError(
+            "overlapping-entries",
+            f"the archive layer will not read {name!r} without a warning: {overlapping}. "
+            "Entries sharing bytes are counted twice, so a small archive expands to many "
+            "times its size, and a warning is something the caller's filter can silence.",
+        ) from overlapping
+    except (zipfile.BadZipFile, EOFError, zlib.error, ValueError, OSError) as broken:
         raise X3PError(
             "not-a-container",
             f"the entry {name!r} could not be read out of the archive: {broken}",
         ) from broken
+    except (NotImplementedError, RuntimeError) as declined:
+        raise X3PError(
+            "recognised-and-unsupported",
+            f"the entry {name!r} is stored in a way this reader will not read: {declined}",
+        ) from declined
 
 
 def _number(element: _Element, what: str) -> float:
@@ -522,10 +578,28 @@ def read_bytes(data: bytes, source: str) -> Surface:
         raise ValueError("a surface read from a container needs a source identity")
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
-    except zipfile.BadZipFile as broken:
+    except (zipfile.BadZipFile, UnicodeDecodeError) as broken:
+        # The decode error is the directory's own entry names. An archive that
+        # sets the flag saying its names are UTF-8 and then carries bytes that
+        # are not gets no further than being opened, and it arrived from the
+        # session in #115 as a traceback rather than as a refusal. It is the same
+        # statement as any other malformed directory: nothing here could be read
+        # as an archive.
         raise X3PError(
             "not-a-container", f"the file is not a readable zip archive: {broken}"
         ) from broken
+    except NotImplementedError as declined:
+        # The archive layer read the field and declined its value, which is the
+        # other half of this reader's own distinction: understood and not
+        # supported, rather than not understood. A byte damaged in transit lands
+        # here too and the message cannot tell the two apart, so it says what the
+        # archive declares and not how it came to declare it. The fuzz session in
+        # #115 is where this arrived, as a traceback out of the standard library.
+        raise X3PError(
+            "recognised-and-unsupported",
+            f"the archive declares something this reader's zip layer does not implement: "
+            f"{declined}",
+        ) from declined
 
     names = [_safe_name(info.filename) for info in archive.infolist()]
     documents = [name for name in names if PurePosixPath(name).name.lower() == "main.xml"]

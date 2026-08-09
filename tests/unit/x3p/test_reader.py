@@ -9,6 +9,8 @@ reader that got every refusal right and the reading wrong.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -253,3 +255,22 @@ def test_a_container_in_which_nothing_was_measured_reads() -> None:
     back = read_bytes(built("every-sample-absent"), source="nothing-measured")
     assert back.missing.all()
     assert back.observed.size == 0
+
+
+def test_an_overlapping_entry_is_refused_even_where_the_caller_silences_warnings() -> None:
+    """The half of that refusal the rest of the suite cannot see.
+
+    The archive layer only warns about this shape, and the suite runs with
+    warnings as errors, so every other test here would pass on a reader that did
+    nothing about it and let the caller's filter decide. An operator's default
+    filter prints a line and carries on reading entries that share their bytes,
+    which is the zip bomb this is about.
+
+    So the filter is set to ignore for the length of this call. What is asserted
+    is that the refusal is the reader's own behaviour and not the runner's.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(X3PError) as raised:
+            read_bytes(built("entries-that-share-their-bytes"), source="overlapping")
+    assert raised.value.reason == "overlapping-entries"

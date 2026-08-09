@@ -176,6 +176,188 @@ def _altered_after_packing() -> bytes:
     return bytes(written)
 
 
+def _a_damaged_compressed_stream() -> bytes:
+    """A member whose deflate stream is corrupt rather than whose bytes are wrong.
+
+    Found by the fuzz session in [#115], which is where it came from and why it
+    is constructed here rather than stored: the session produced a container of
+    199 bytes carrying this shape, and one byte inside the compressed payload
+    reaches it deterministically without a stored blob nobody can regenerate.
+
+    It is a different refusal from `altered-after-packing`, which is stored
+    uncompressed and is caught by the archive's own checksum. Here the
+    decompressor gives up before any checksum is reached, and it raises out of
+    zlib rather than out of the archive layer. Until #115 that was the one of the
+    three that left the reader as a traceback.
+
+    The offset is ten bytes into the stream. Earlier bytes carry the block header
+    and the code lengths, where damage tends to produce a different complaint;
+    ten is inside the compressed data itself, which is where a distance code
+    points somewhere the window has not reached yet.
+
+    [#115]: https://github.com/iderex/gutachten/issues/115
+    """
+    written = bytearray(repack(members()))
+    with zipfile.ZipFile(io.BytesIO(bytes(written))) as archive:
+        info = archive.getinfo(PAYLOAD)
+    start = info.header_offset + 30 + len(info.filename.encode("ascii")) + len(info.extra)
+    written[start + 10] ^= 0xFF
+    return bytes(written)
+
+
+def _an_entry_name_that_is_not_text() -> bytes:
+    """A directory declaring its names are text and carrying bytes that are not.
+
+    The eighth finding of the fuzz session in [#115]. One flag bit says the entry
+    names in this archive are UTF-8, and the archive layer then decodes them
+    while it reads the directory, so a byte that is not valid UTF-8 stops the
+    archive from being opened at all. It arrived as a decode error out of the
+    standard library rather than as a refusal.
+
+    Built by setting that bit and writing one byte over the metadata document's
+    name, so the fixture is two edits to one field and nothing else.
+
+    [#115]: https://github.com/iderex/gutachten/issues/115
+    """
+    written = bytearray(repack(members()))
+    at = written.index(b"PK")
+    flags = int.from_bytes(written[at + 8 : at + 10], "little") | 0x800
+    written[at + 8 : at + 10] = flags.to_bytes(2, "little")
+    written[written.index(DOCUMENT.encode("ascii"), at)] = 0xFF
+    return bytes(written)
+
+
+def _a_stream_the_other_decompressor_refuses() -> bytes:
+    """A member declared as one compression and holding another.
+
+    The seventh finding of the fuzz session in [#115]. This format admits three
+    compressions and the archive layer implements all three, so a member declared
+    as the second one is opened rather than declined. What it then holds is a
+    stream of the first, and that decompressor gives up with an operating system
+    error rather than with anything the two above raise.
+
+    It is the same statement as a damaged deflate stream and carries the same
+    reason. The two are separate fixtures because they are separate libraries
+    raising separate exceptions, and a reader that caught one and not the other
+    is what this pair refuses.
+
+    [#115]: https://github.com/iderex/gutachten/issues/115
+    """
+    written = bytearray(repack(members()))
+    at = written.index(b"PK")
+    written[at + 10 : at + 12] = (12).to_bytes(2, "little")
+    return bytes(written)
+
+
+def _entries_that_share_their_bytes() -> bytes:
+    """Two directory entries recording the same place in the archive.
+
+    The sixth finding of the fuzz session in [#115] and the one that was not an
+    exception. Overlapping entries are the other zip bomb shape beside a declared
+    size no scan has: the same bytes count as the content of several members, so
+    a small archive expands to many times what it holds. The standard library
+    refuses one spelling of it and only warns about this one, and a warning is
+    something the caller's filter decides the fate of.
+
+    Built by writing the payload entry's recorded position over the metadata
+    document's, which is four bytes at the end of a central directory record.
+
+    [#115]: https://github.com/iderex/gutachten/issues/115
+    """
+    written = bytearray(repack(members()))
+    with zipfile.ZipFile(io.BytesIO(bytes(written))) as archive:
+        document = archive.getinfo(DOCUMENT).header_offset
+    first = written.index(b"PK")
+    second = written.index(b"PK", first + 1)
+    written[second + 42 : second + 46] = int(document).to_bytes(4, "little")
+    return bytes(written)
+
+
+def _an_encrypted_entry() -> bytes:
+    """A container declaring that one of its members is encrypted.
+
+    The fifth finding of the fuzz session in [#115], and the one least like
+    damage: an evidence file protected with a password is a thing a laboratory
+    produces on purpose, and this project cannot open one. The flag is the lowest
+    bit of the general purpose field, two bytes into a central directory record
+    after the two version fields.
+
+    Reaching it here by setting that bit rather than by encrypting anything, so
+    the fixture stays one change to a container the writer produced. What it
+    proves is the refusal, which is what a reader meets either way.
+
+    [#115]: https://github.com/iderex/gutachten/issues/115
+    """
+    written = bytearray(repack(members()))
+    at = written.index(b"PK")
+    flags = int.from_bytes(written[at + 8 : at + 10], "little") | 0x1
+    written[at + 8 : at + 10] = flags.to_bytes(2, "little")
+    return bytes(written)
+
+
+def _a_compression_method_nobody_implements() -> bytes:
+    """A member stored under a compression method this reader's zip layer declines.
+
+    The fourth finding of the fuzz session in [#115]. The method field is two
+    bytes further into a central directory record than the version field above,
+    and 99 is the number the encrypted variants of this format use, which no
+    plain zip layer implements.
+
+    A container using a method nobody here expected would arrive exactly this way
+    without anything being damaged, which is why the refusal is the recognised
+    and unsupported one and why the message names what the entry declared.
+
+    [#115]: https://github.com/iderex/gutachten/issues/115
+    """
+    written = bytearray(repack(members()))
+    at = written.index(b"PK")
+    written[at + 10 : at + 12] = (99).to_bytes(2, "little")
+    return bytes(written)
+
+
+def _an_archive_version_nobody_implements() -> bytes:
+    """A directory entry declaring a zip version this reader's archive layer declines.
+
+    The third finding of the fuzz session in [#115]. The field is the version
+    needed to extract, two bytes into every central directory record after the
+    signature and the version that wrote it, and the standard library refuses to
+    open an archive whose value it does not implement. That refusal arrived as a
+    traceback rather than as one of this reader's own.
+
+    Filed under the recognised and unsupported reason rather than under a
+    malformed archive, because the archive layer read the field and declined its
+    value. One byte damaged in transit produces the same declaration and nothing
+    in the file says which happened, which is what the refusal's own message says.
+
+    [#115]: https://github.com/iderex/gutachten/issues/115
+    """
+    written = bytearray(repack(members()))
+    at = written.index(b"PK")
+    written[at + 6 : at + 8] = (255).to_bytes(2, "little")
+    return bytes(written)
+
+
+def _only_the_index_arrived() -> bytes:
+    """An archive holding its central directory and none of the members it lists.
+
+    The second finding of the fuzz session in [#115], in the shape a fetch that
+    delivered the tail of a file and nothing else produces. Every entry the
+    directory lists records where its member starts, every one of those positions
+    is now before the beginning of the file, and the seek underneath the archive
+    layer raises a plain value error rather than anything a reader would think to
+    catch.
+
+    Built by cutting at the offset the end of central directory record itself
+    names, so the fixture does not carry a number that would move if the writer
+    or the fixture surface changed.
+
+    [#115]: https://github.com/iderex/gutachten/issues/115
+    """
+    written = repack(members())
+    end = written.rindex(b"PK")
+    return written[int.from_bytes(written[end + 16 : end + 20], "little") :]
+
+
 def _declares_a_huge_member() -> bytes:
     """A small archive whose header claims a member no scan has.
 
@@ -388,6 +570,28 @@ FIXTURES: tuple[Fixture, ...] = (
     Fixture("every-sample-absent", None, _every_sample_absent),
     Fixture("not-an-archive-at-all", "not-a-container", _not_a_container),
     Fixture("altered-after-packing", "not-a-container", _altered_after_packing),
+    Fixture("an-entry-name-that-is-not-text", "not-a-container", _an_entry_name_that_is_not_text),
+    Fixture("a-damaged-compressed-stream", "not-a-container", _a_damaged_compressed_stream),
+    Fixture(
+        "a-stream-the-other-decompressor-refuses",
+        "not-a-container",
+        _a_stream_the_other_decompressor_refuses,
+    ),
+    Fixture("only-the-index-arrived", "not-a-container", _only_the_index_arrived),
+    Fixture(
+        "an-archive-version-nobody-implements",
+        "recognised-and-unsupported",
+        _an_archive_version_nobody_implements,
+    ),
+    Fixture(
+        "a-compression-method-nobody-implements",
+        "recognised-and-unsupported",
+        _a_compression_method_nobody_implements,
+    ),
+    Fixture("an-encrypted-entry", "recognised-and-unsupported", _an_encrypted_entry),
+    Fixture(
+        "entries-that-share-their-bytes", "overlapping-entries", _entries_that_share_their_bytes
+    ),
     Fixture("a-header-declaring-a-huge-member", "entry-too-large", _declares_a_huge_member),
     Fixture("an-entry-climbing-out", "entry-outside-the-archive", _escaping_entry),
     Fixture("an-entry-naming-a-root", "entry-outside-the-archive", _absolute_entry),

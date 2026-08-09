@@ -1,0 +1,80 @@
+# The fuzz session against the container reader, on a schedule rather than on
+# the merge path.
+#
+# The reader is the one component that consumes bytes from outside this project,
+# and it stacks a zip, an XML document and a binary array. The session damages a
+# valid container until its budget runs out and asserts that every input either
+# reads into a valid surface or is refused with a reason the reader declares.
+# Why that is not a gate check, and what a finding becomes, is
+# tests/fuzz/README.md.
+#
+# Not a required check and not intended to be one. A session with a time budget
+# gives a different verdict on different days, and a check that can go red for
+# reasons no change caused is a check people learn to route around. What holds a
+# merge is the fixture a finding turns into, which runs in the gate with
+# everything else.
+#
+# Same posture as the other workflows here: every action pinned to a commit with
+# the version in a comment, checkout without persisted credentials, permissions
+# denied at the top level and granted per job.
+name: Fuzz the container reader
+
+on:
+  schedule:
+    # Once a day. The session is minutes long and finds most of what it will
+    # find early, so a shorter interval buys repetition rather than coverage.
+    - cron: "17 3 * * *"
+  # So that a change to the session or to the reader can be put through it
+  # without waiting for the cron, and so the first run of a new session is
+  # something somebody starts rather than something nobody sees until tomorrow.
+  workflow_dispatch:
+
+# Explicit deny-all at workflow level; the job below grants only what it needs.
+permissions: {}
+
+# A newer run supersedes an in-flight one on the same ref. The session publishes
+# nothing and holds nothing, so cancelling a superseded run loses only time.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: fuzz session
+    runs-on: ubuntu-latest
+    # Above the budget below, so the session ends on its own clock and a job
+    # that overran says something different from one that found a defect.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # No step pushes via git, so do not persist the GITHUB_TOKEN.
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          # Pinned rather than latest, for the same reason the test workflow
+          # pins it: the resolver is part of what decides the installed graph.
+          version: "0.12.2"
+
+      - name: Install from the lockfile
+        run: uv sync --locked
+
+      - name: Run the session
+        env:
+          # Ten minutes, inside the job timeout above.
+          GUTACHTEN_FUZZ_SECONDS: "600"
+        run: |
+          # A different seed each run. A session repeating one sequence every
+          # night stops finding anything after the first, and the seed is
+          # printed by the session so a finding stays reproducible. Read from
+          # the clock in the shell rather than from a workflow expression, so
+          # nothing outside this file is interpolated into a command.
+          GUTACHTEN_FUZZ_SEED="$(date +%s)"
+          export GUTACHTEN_FUZZ_SEED
+          uv run pytest tests/fuzz -m fuzz -s --no-cov

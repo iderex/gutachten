@@ -88,10 +88,24 @@ norecursedirs = [
     "{arch}",
     "harness",
 ]
+# Markers are declared here because `--strict-markers` refuses one that is not.
+# A marker invented at a call site is a marker no configuration can select or
+# deselect, so the exclusion below would silently stop excluding anything.
+markers = [
+    "fuzz: a session with a time budget rather than a test with an outcome, run on a schedule and not in the gate",
+]
 addopts = [
     "--strict-markers",
     "--strict-config",
     "-ra",
+    # The fuzz session is out of the default run, by configuration rather than
+    # by a skip inside it. It damages a valid container until its budget runs
+    # out, so it takes minutes and tries different inputs every time, and a
+    # green merge path would be saying less than it looks like it says. What
+    # runs in the gate is the fixtures it produces. Deselected rather than
+    # skipped, so a default run prints a count of what it did not ask for.
+    "-m",
+    "not fuzz",
     "--cov=gutachten",
     "--cov=tests/support",
     "--cov-report=term-missing",
