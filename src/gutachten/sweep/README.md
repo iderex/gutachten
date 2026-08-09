@@ -23,9 +23,10 @@ a results table checkable one line at a time instead of only as a whole.
 ## What is not here
 
 The preregistered design, with the parameters it moves, the sample size and what
-it will report, is
-[#79](https://github.com/iderex/gutachten/issues/79). The low discrepancy
-sampling the global analysis needs is
+it will report, is `docs/sensitivity-design.md` and `docs/sensitivity-design.json`.
+Nothing here reads either yet: the file is the commitment and
+[#87](https://github.com/iderex/gutachten/issues/87) is the run. The low
+discrepancy sampling the global analysis needs is
 [#87](https://github.com/iderex/gutachten/issues/87), and neither generator here
 is it. The one at a time report and its limits are
 [#85](https://github.com/iderex/gutachten/issues/85), and the variance based
