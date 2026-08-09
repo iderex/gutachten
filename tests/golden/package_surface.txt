@@ -14,6 +14,8 @@ gutachten.profile
 gutachten.stats
 gutachten.surface
 gutachten.sweep
+gutachten.sweep.design
+gutachten.sweep.runner
 gutachten.synth
 gutachten.transforms
 gutachten.transforms.audit
