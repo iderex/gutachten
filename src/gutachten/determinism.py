@@ -10,8 +10,9 @@ worth less than it looks.
 
 **Randomness draws from a seed that is set explicitly and recorded.** No code
 calls an unseeded generator. The seed is a field of the run manifest, which
-refuses a manifest without one. Catching an unseeded call at the point it is
-made is #27 and is not in this module.
+refuses a manifest without one. ``refuse_unseeded_draws`` catches the call at
+the point it is made, and the two-run comparison in the suite catches the ones
+it cannot see, for the reason given at that function.
 
 **The thread count of the numerical backend is pinned in the reference mode.** A
 threaded reduction sums in a different order on a machine with a different core
@@ -71,21 +72,26 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Iterable, MutableMapping
+from collections.abc import Iterable, Iterator, MutableMapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any, NoReturn
 
 __all__ = [
     "FAST_NOTE",
+    "GLOBAL_DRAWS",
     "NUMERICAL_MODULES",
     "REFERENCE_NOTE",
     "REFERENCE_THREADS",
     "THREAD_VARIABLES",
     "DeterminismRecord",
     "RunMode",
+    "UnseededDraw",
     "fast_mode",
     "pin_threads",
     "refuse_a_late_pin",
+    "refuse_unseeded_draws",
 ]
 
 
@@ -115,6 +121,36 @@ REFERENCE_THREADS = 1
 #: The modules whose import loads a threaded backend. Once one of these is in
 #: ``sys.modules`` the pin is too late to take effect.
 NUMERICAL_MODULES: tuple[str, ...] = ("numpy", "scipy", "skimage", "sklearn", "statsmodels")
+
+#: The entry points in ``numpy.random`` that draw from the one generator the
+#: module made at import, seeded from the operating system and recorded nowhere.
+#: Calling any of them from a step makes that step's output depend on something
+#: no manifest carries, and the two-run comparison then reports a difference
+#: whose cause is four steps away from where it is read.
+#:
+#: The whole legacy surface rather than the two somebody is most likely to
+#: reach for. Each of these is one import alias away from the others, and a list
+#: holding half of them refuses the half nobody was going to type anyway.
+GLOBAL_DRAWS: tuple[str, ...] = (
+    "beta",
+    "bytes",
+    "choice",
+    "exponential",
+    "normal",
+    "permutation",
+    "poisson",
+    "rand",
+    "randint",
+    "randn",
+    "random",
+    "random_sample",
+    "ranf",
+    "sample",
+    "seed",
+    "shuffle",
+    "standard_normal",
+    "uniform",
+)
 
 REFERENCE_NOTE = (
     "Reference mode. The numerical backend is pinned to one thread, so a re-run "
@@ -229,3 +265,67 @@ def fast_mode() -> DeterminismRecord:
     happens by leaving something out.
     """
     return DeterminismRecord(mode=RunMode.FAST, threads=None)
+
+
+class UnseededDraw(RuntimeError):
+    """A random number was asked for without a seed anybody recorded."""
+
+
+@contextmanager
+def refuse_unseeded_draws(module: Any) -> Iterator[None]:
+    """Refuse a draw from the global generator for the duration, then restore.
+
+    ``module`` is ``numpy.random``, handed in rather than imported. This module
+    has to be importable before the numerical stack loads, because ``pin_threads``
+    is only in time while it is, and an import of numpy at the top of this file
+    would make the pin too late in every process that imported determinism first.
+
+    **What it refuses.** Every entry point in ``GLOBAL_DRAWS``, which are the
+    functions that draw from the one generator the interpreter made at import
+    and that nothing seeded, and ``default_rng`` called with no seed. The refusal
+    names the function, so the failure lands on the line that made the call
+    rather than on a byte comparison three steps later that says only that two
+    runs differ.
+
+    **Why both.** A byte comparison over two runs catches an unseeded draw only
+    where the fixture reaches the step that made it. This catches it at the call,
+    which is the difference between a diagnosis and a search. Neither replaces
+    the other and the fixture is the one that reaches further.
+
+    **What it does not reach.** A generator built outside the window and passed
+    in, a draw made in a subprocess, and any entry point not in the list. The
+    list is a floor under the mistake somebody actually makes, which is typing
+    ``np.random.normal`` where a seeded generator was meant.
+    """
+    original = {name: getattr(module, name) for name in GLOBAL_DRAWS}
+    original_default_rng = module.default_rng
+
+    def refuse(name: str) -> Any:
+        def refused(*arguments: Any, **options: Any) -> NoReturn:
+            raise UnseededDraw(
+                f"numpy.random.{name} draws from the global generator, which nothing "
+                "seeded and no manifest records. Build a generator from the run's own "
+                "seed with numpy.random.default_rng(seed) and draw from that, so the "
+                "same seed gives the same numbers on the next run."
+            )
+
+        return refused
+
+    def guarded_default_rng(seed: Any = None, *rest: Any, **options: Any) -> Any:
+        if seed is None:
+            raise UnseededDraw(
+                "numpy.random.default_rng() was called with no seed, so it drew one "
+                "from the operating system and the numbers it produces cannot be "
+                "reproduced. Pass the run's seed, which the manifest records."
+            )
+        return original_default_rng(seed, *rest, **options)
+
+    for name in GLOBAL_DRAWS:
+        setattr(module, name, refuse(name))
+    module.default_rng = guarded_default_rng
+    try:
+        yield
+    finally:
+        for name, function in original.items():
+            setattr(module, name, function)
+        module.default_rng = original_default_rng
