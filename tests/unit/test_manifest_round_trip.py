@@ -17,9 +17,11 @@ import pytest
 
 from gutachten.determinism import REFERENCE_THREADS, DeterminismRecord, RunMode
 from gutachten.manifest import (
+    SCHEMA_VERSION,
     EnvironmentRecord,
     FileRecord,
     ProfileRecord,
+    RunManifest,
     VersionMismatch,
     from_dict,
     read,
@@ -28,7 +30,7 @@ from gutachten.manifest import (
     resolve,
     surface_digest,
 )
-from gutachten.surface import AxisOrientation, LengthUnit, Surface
+from gutachten.surface import AxisOrientation, LengthUnit, Surface, TransformRecord
 from gutachten.synth import SurfaceParameters, generate
 from gutachten.transforms.base import SurfaceProperty, record_for
 from gutachten.transforms.pipeline import Step
@@ -73,11 +75,44 @@ class Window:
         return surface.with_transform(record_for(self, parameters), np.asarray(heights))
 
 
+@dataclass(frozen=True)
+class FloorParameters:
+    """One bound, so a sweep has something to vary the recorded count against."""
+
+    bound_um: float
+
+
+class Floor:
+    """A step that measures while it runs and records what it found.
+
+    A fixture rather than a step of this pipeline. The three steps in the tree
+    that measure are real transforms with real geometry, and a round trip test
+    resting on one of them would move whenever that geometry did, which is a
+    recording of the transform rather than of the schema.
+    """
+
+    identifier = "example-floor"
+    version = "1"
+    parameters_type = FloorParameters
+    produces = frozenset({SurfaceProperty.FILTERED})
+    requires = frozenset({SurfaceProperty.LEVELLED})
+    refuses = frozenset[SurfaceProperty]()
+
+    def apply(self, surface: Surface, parameters: FloorParameters) -> Surface:
+        below = surface.heights < parameters.bound_um
+        heights = np.where(below, parameters.bound_um, surface.heights)
+        record = record_for(self, parameters).with_outcomes(
+            raised_samples=int(np.count_nonzero(below))
+        )
+        return surface.with_transform(record, np.asarray(heights))
+
+
 def a_registry() -> Registry:
     registry = Registry()
     registry.register(Scale())
     registry.register(Clip())
     registry.register(Window())
+    registry.register(Floor())
     return registry
 
 
@@ -123,6 +158,30 @@ def a_run(factor: float = A_FACTOR) -> tuple[Surface, object]:
         surface=a_surface(),
         profile=A_PROFILE,
         chain=a_chain(factor),
+        registry=a_registry(),
+        seed=20260808,
+        determinism=REFERENCE,
+        environment=AN_ENVIRONMENT,
+    )
+
+
+# The generated surface is a bowl running from about -31 to -12 micrometres, so
+# a bound inside that range raises some of the samples and not all of them. A
+# bound outside it would record every sample or none, and a count that cannot
+# move is a count no sweep could read anything out of.
+A_BOUND_UM = -20.0
+
+
+def a_measuring_run(surface: Surface | None = None) -> tuple[Surface, RunManifest]:
+    """A run of one step that measures nothing and one that measures something."""
+    return record_run(
+        role="scan-a",
+        surface=a_surface() if surface is None else surface,
+        profile=A_PROFILE,
+        chain=[
+            Step(identifier="example-scale", parameters=ScaleParameters(factor=1.0)),
+            Step(identifier="example-floor", parameters=FloorParameters(bound_um=A_BOUND_UM)),
+        ],
         registry=a_registry(),
         seed=20260808,
         determinism=REFERENCE,
@@ -301,17 +360,145 @@ def test_a_manifest_at_a_schema_version_this_code_does_not_write_is_refused(
     tmp_path: Path,
 ) -> None:
     _, manifest = a_run()
-    data = manifest.to_dict()
-    data["schema_version"] = data["schema_version"] + 1
     path = tmp_path / "future.json"
+    # Derived from the constant rather than typed, so a version move does not
+    # turn this into a test that edits a line no longer in the file and then
+    # asserts against a manifest it never changed.
     path.write_text(
-        manifest.to_text().replace('"schema_version": 3', '"schema_version": 4'),
+        manifest.to_text().replace(
+            f'"schema_version": {SCHEMA_VERSION}',
+            f'"schema_version": {SCHEMA_VERSION + 1}',
+        ),
         encoding="utf-8",
         newline="\n",
     )
 
     with pytest.raises(ValueError, match="is not the version this code writes"):
         read(path)
+
+
+def test_a_step_that_measured_something_writes_it_into_the_manifest(tmp_path: Path) -> None:
+    # A sweep reads manifests and not surfaces, because the surfaces a sweep of
+    # thousands of cells produces are not kept. So a threshold that moved the
+    # score has to be readable beside how much surface it took on the way, and
+    # the manifest is the only place both are.
+    result, manifest = a_measuring_run()
+
+    measured, told = manifest.steps[1], manifest.steps[0]
+    assert dict(measured.parameters) == {"bound_um": A_BOUND_UM}
+    assert [key for key, _ in measured.outcomes] == ["raised_samples"]
+    # Read off the surface that came out rather than written down here. A count
+    # this file chose would pass against a manifest recording anything at all.
+    assert dict(measured.outcomes) == dict(result.provenance[-1].outcomes)
+    # Neither nothing nor everything, so the number is one a sweep could watch move.
+    assert 0 < int(dict(measured.outcomes)["raised_samples"]) < result.heights.size
+
+    # Empty rather than absent, so a step that found nothing and a step that
+    # cannot find anything are one shape and a reader is not asked to tell a
+    # missing key from a measurement of zero.
+    assert told.outcomes == ()
+    assert '"outcomes": {}' in manifest.to_text()
+
+    path = tmp_path / "run.json"
+    manifest.write(path)
+    assert read(path) == manifest
+
+
+def test_a_manifest_at_the_previous_schema_version_is_refused_for_its_version() -> None:
+    # The near miss is the refusal that names the field. A manifest written
+    # before outcomes landed carries none anywhere, so a reader that looked
+    # inside a step before checking the version would refuse it for a missing
+    # key, and whoever met that message would go looking for a corrupt file
+    # instead of for the version that explains it.
+    _, manifest = a_measuring_run()
+    data = manifest.to_dict()
+    data["schema_version"] = SCHEMA_VERSION - 1
+    for step in data["steps"]:
+        del step["outcomes"]
+
+    with pytest.raises(ValueError) as refusal:
+        from_dict(data)
+
+    assert "is not the version this code writes" in str(refusal.value)
+    assert "outcomes" not in str(refusal.value)
+
+
+def test_a_step_missing_its_outcomes_at_the_current_version_is_refused_naming_it() -> None:
+    # The other side of the same gate. Here the version is one this code writes,
+    # so the field is absent rather than not yet invented, and the message says
+    # which field.
+    _, manifest = a_measuring_run()
+    data = manifest.to_dict()
+    del data["steps"][1]["outcomes"]
+
+    with pytest.raises(ValueError, match=r"missing \['outcomes'\]"):
+        from_dict(data)
+
+
+def test_re_running_reads_the_parameters_and_not_what_the_first_run_found() -> None:
+    # An outcome is not an input. Handed back to the step it would fix the
+    # answer the re-run is supposed to reach on its own, and `resolve` compares
+    # the recorded names against the ones the step declares, so an outcome that
+    # leaked into the parameters would refuse a manifest this tree wrote.
+    result, manifest = a_measuring_run()
+
+    chain = resolve(manifest, a_registry())
+
+    assert [step.identifier for step in chain] == ["example-scale", "example-floor"]
+    assert chain[1].parameters == FloorParameters(bound_um=A_BOUND_UM)
+    again = rerun(manifest, a_registry(), a_surface())
+    assert surface_digest(again) == surface_digest(result)
+
+
+def test_the_outcomes_of_a_run_are_the_entries_that_run_appended() -> None:
+    # A surface arrives from the reader with provenance already on it. The
+    # entries this run appended are the tail of the chain rather than the whole
+    # of it, and a manifest built from the start would give every step the
+    # measurements of whatever the reader recorded.
+    read_in = a_surface()
+    carrying = read_in.with_transform(
+        TransformRecord.of("example-reader", "1", declared="micrometres").with_outcomes(
+            trimmed_samples=3
+        ),
+        read_in.heights,
+    )
+
+    _, manifest = a_measuring_run(surface=carrying)
+
+    assert [step.identifier for step in manifest.steps] == ["example-scale", "example-floor"]
+    assert manifest.steps[0].outcomes == ()
+    assert [key for key, _ in manifest.steps[1].outcomes] == ["raised_samples"]
+    assert "trimmed_samples" not in manifest.to_text()
+
+
+def test_a_step_leaving_a_provenance_entry_under_another_name_is_refused() -> None:
+    # The outcomes are matched to the steps by the order they ran in, which is
+    # sound only while each entry is the step that appended it. A step recording
+    # itself under another name would file its measurements against a different
+    # step's parameters, and the manifest would read as a sweep result about a
+    # parameter that produced none of it.
+    class Misnamed(Scale):
+        def apply(self, surface: Surface, parameters: ScaleParameters) -> Surface:
+            heights = surface.heights * parameters.factor
+            return surface.with_transform(
+                TransformRecord.of("something-else", self.version, factor=parameters.factor),
+                np.asarray(heights),
+            )
+
+    registry = Registry()
+    registry.register(Misnamed())
+
+    with pytest.raises(RuntimeError, match="left a provenance entry naming"):
+        record_run(
+            role="scan-a",
+            surface=a_surface(),
+            profile=A_PROFILE,
+            chain=[Step(identifier="example-scale", parameters=ScaleParameters(factor=1.0))],
+            registry=registry,
+            seed=20260808,
+            determinism=REFERENCE,
+            environment=AN_ENVIRONMENT,
+        )
 
 
 def test_a_manifest_written_twice_is_written_byte_identically(tmp_path: Path) -> None:

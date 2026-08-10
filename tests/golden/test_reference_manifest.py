@@ -39,6 +39,12 @@ def a_reference_run() -> RunManifest:
     Written out here rather than imported from the unit tests, because a
     recording that moves when a shared fixture moves records the fixture rather
     than the schema.
+
+    The two steps are one that measured nothing and one that measured something,
+    because those are the two shapes a step record has and a recording holding
+    only one of them would let the other move without a diff. The rejection step
+    is the case the outcomes field exists for: a sweep varies ``threshold`` and
+    reads ``rejected_samples`` to see how much surface the threshold took.
     """
     return RunManifest(
         inputs=(FileRecord(role="scan-a", sha256="a" * 64),),
@@ -46,9 +52,14 @@ def a_reference_run() -> RunManifest:
         steps=(
             StepRecord(identifier="level", version="2", parameters=(("model", "plane"),)),
             StepRecord(
-                identifier="bandpass",
+                identifier="reject-outliers",
                 version="1",
-                parameters=(("lower_um", 25.0), ("upper_um", 250.0)),
+                parameters=(
+                    ("criterion", "median-absolute-deviation"),
+                    ("neighbourhood", 40.0),
+                    ("threshold", 5.0),
+                ),
+                outcomes=(("measured_samples", 8192), ("rejected_samples", 137)),
             ),
         ),
         seed=20260808,

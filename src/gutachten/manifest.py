@@ -14,13 +14,33 @@ and it is why the schema is a set of frozen records with a version rather than
 whatever dictionary a writer happened to assemble.
 
 What it names: the inputs by hash, the profile by name and version, every step in
-order with its version and its resolved parameters, the comparison stage with
-its own parameters where the run made one, the seed, which of the two modes in
-``gutachten.determinism`` the run was made in and what its thread count was
-pinned to, the software version and the resolved versions of the dependencies
-that affect a number, and the outputs by hash. A field that is not
-in this list does not affect a result, and if one turns out to, the schema is
-wrong and its version moves.
+order with its version, its resolved parameters and whatever it measured while
+it ran, the comparison stage with its own parameters where the run made one, the
+seed, which of the two modes in ``gutachten.determinism`` the run was made in and
+what its thread count was pinned to, the software version and the resolved
+versions of the dependencies that affect a number, and the outputs by hash. A
+field that is not in this list does not affect a result, and if one turns out to,
+the schema is wrong and its version moves.
+
+## What a step was told, and what it found
+
+A step record keeps those two apart, under ``parameters`` and ``outcomes``. A
+parameter is an input: a sweep varies it and a re-run has to reproduce it. An
+outcome is a measurement of what the run did with that input, and the case it
+exists for is a rejection threshold. A sweep reads manifests rather than
+surfaces, because the surfaces a sweep of thousands of cells produces are not
+kept, so a row saying a threshold moved the score with no record of how much
+surface the threshold removed on the way is the less interesting half of the
+measurement on its own.
+
+They are disjoint by name and a record naming one name as both is refused. Merged
+into one bag a reader could no longer tell an input a sweep varies from a
+measurement of what the run did with it, and the two are read for opposite
+purposes.
+
+``resolve`` reads the parameters and never the outcomes. An outcome is not an
+input, and feeding one back into a re-run would turn a reproduction into a
+different experiment.
 
 Inputs and outputs are named by hash rather than carried. A scan is somebody
 else's file under somebody else's terms, and a hash is what lets a result be
@@ -117,8 +137,11 @@ __all__ = [
 #: version 1 manifest does not say. Moved to 3 when the comparison record was
 #: added, because the parameters of the stage that produces the number were not
 #: recorded anywhere before it and a version 2 manifest cannot say what they
-#: were.
-SCHEMA_VERSION = 3
+#: were. Moved to 4 when a step gained the outcomes it measured, because a
+#: version 3 manifest recording no outcome and a version 4 manifest from a step
+#: that found nothing are different statements, and without the version moving
+#: they are the same bytes.
+SCHEMA_VERSION = 4
 
 _SHA256 = re.compile(r"\A[0-9a-f]{64}\Z")
 
@@ -172,31 +195,50 @@ class ProfileRecord:
 
 @dataclass(frozen=True)
 class StepRecord:
-    """One transform as it ran, with the parameters it resolved to.
+    """One transform as it ran: what it was told, and what it found.
 
     The parameters are the resolved ones and not the profile's, because a run
     that overrode one is a run that did something the profile does not describe.
     They are a sorted tuple of pairs so that a manifest written twice is written
     identically.
+
+    ``outcomes`` is what the step measured while it ran, and it is empty for a
+    step that measured nothing. Empty rather than absent: a step that found
+    nothing and a step that cannot find anything are the same shape here, and
+    which of the two a reader is looking at is answered by the step, not by
+    whether the key is present.
     """
 
     identifier: str
     version: str
     parameters: tuple[tuple[str, ParameterValue], ...]
+    outcomes: tuple[tuple[str, ParameterValue], ...] = ()
 
     def __post_init__(self) -> None:
         _require_text(self.identifier, "a step's identifier")
         _require_text(self.version, "a step's version")
-        keys = [key for key, _ in self.parameters]
-        if sorted(keys) != keys:
-            raise ValueError(f"step {self.identifier!r} records its parameters unsorted: {keys}")
-        if len(set(keys)) != len(keys):
-            raise ValueError(f"step {self.identifier!r} names a parameter twice: {keys}")
+        for plural, singular, entries in (
+            ("parameters", "a parameter", self.parameters),
+            ("outcomes", "an outcome", self.outcomes),
+        ):
+            keys = [key for key, _ in entries]
+            if sorted(keys) != keys:
+                raise ValueError(f"step {self.identifier!r} records its {plural} unsorted: {keys}")
+            if len(set(keys)) != len(keys):
+                raise ValueError(f"step {self.identifier!r} names {singular} twice: {keys}")
         if not self.parameters:
             raise ValueError(
                 f"step {self.identifier!r} records no parameters. A step with nothing "
                 "recorded is a step the sensitivity study cannot vary, which is the "
                 "failure this schema exists against."
+            )
+        both = sorted(dict(self.parameters).keys() & dict(self.outcomes).keys())
+        if both:
+            raise ValueError(
+                f"step {self.identifier!r} records {both} as both a parameter and an "
+                "outcome. A sweep varies the parameters and reads the outcomes to explain "
+                "what it saw, so a name carrying both leaves it varying its own "
+                "explanation."
             )
 
     def to_dict(self) -> dict[str, Any]:
@@ -204,6 +246,7 @@ class StepRecord:
             "identifier": self.identifier,
             "version": self.version,
             "parameters": dict(self.parameters),
+            "outcomes": dict(self.outcomes),
         }
 
 
@@ -369,12 +412,41 @@ def _file_record(data: Mapping[str, Any]) -> FileRecord:
     return FileRecord(role=str(data["role"]), sha256=str(data["sha256"]))
 
 
+def _step_record(data: Mapping[str, Any]) -> StepRecord:
+    """One step out of a manifest this code has already agreed to read.
+
+    The version gate stands in front of this, so a key missing here is a
+    malformed manifest at the current version rather than an older one, and the
+    message says so instead of sending a reader to look up which version added
+    the field.
+    """
+    missing = sorted({"identifier", "version", "parameters", "outcomes"} - set(data))
+    if missing:
+        raise ValueError(
+            f"a step at schema version {SCHEMA_VERSION} is missing {missing}. The version "
+            "this manifest declares is one this code writes, so the field is absent rather "
+            "than not yet invented."
+        )
+    return StepRecord(
+        identifier=str(data["identifier"]),
+        version=str(data["version"]),
+        parameters=tuple(sorted(data["parameters"].items())),
+        outcomes=tuple(sorted(data["outcomes"].items())),
+    )
+
+
 def from_dict(data: Mapping[str, Any]) -> RunManifest:
     """Rebuild a manifest from plain data, refusing one this code cannot read whole.
 
     Every field is taken from the data rather than defaulted. A field a reader
     supplies for itself is a field the manifest did not have to record, and the
     whole point of the schema is that it records all of them.
+
+    The declared version is checked before any field inside a record is read.
+    Read the other way round, a manifest from an older schema is refused for
+    lacking a field that version had never heard of, which reads as a corrupt
+    file and sends a reader to look for the corruption rather than to the
+    version that would explain it.
     """
     missing = sorted(REQUIRED_FIELDS - set(data))
     if missing:
@@ -384,23 +456,24 @@ def from_dict(data: Mapping[str, Any]) -> RunManifest:
             "to make visible."
         )
 
+    declared = int(data["schema_version"])
+    if declared != SCHEMA_VERSION:
+        raise ValueError(
+            f"manifest schema version {declared} is not the version this code writes, "
+            f"which is {SCHEMA_VERSION}. Reading the fields that happen to be recognised "
+            "would produce a re-run that is not the run."
+        )
+
     determinism = data["determinism"]
     environment = data["environment"]
     comparison = data["comparison"]
     return RunManifest(
-        schema_version=int(data["schema_version"]),
+        schema_version=declared,
         inputs=tuple(_file_record(item) for item in data["inputs"]),
         profile=ProfileRecord(
             name=str(data["profile"]["name"]), version=str(data["profile"]["version"])
         ),
-        steps=tuple(
-            StepRecord(
-                identifier=str(step["identifier"]),
-                version=str(step["version"]),
-                parameters=tuple(sorted(step["parameters"].items())),
-            )
-            for step in data["steps"]
-        ),
+        steps=tuple(_step_record(step) for step in data["steps"]),
         comparison=None
         if comparison is None
         else ComparisonRecord(
@@ -446,6 +519,11 @@ def resolve(manifest: RunManifest, registry: Registry) -> list[Step]:
     than from the profile it names. A run that overrode a parameter is a run the
     profile does not describe, and re-reading the profile would reproduce the
     run somebody meant instead of the one that happened.
+
+    The outcomes are not read here and a step is not handed them. What a step
+    found is a measurement of the first run, so feeding it back in would fix the
+    answer the re-run is supposed to arrive at independently, and a reproduction
+    that cannot disagree proves nothing.
     """
     chain: list[Step] = []
     for record in manifest.steps:
@@ -493,27 +571,43 @@ def record_run(
     versions come off the registered transforms and the parameters off the
     records that were handed to them, so a manifest cannot describe a run that
     did not happen.
-    """
-    result = run_chain(chain, registry, surface)
 
-    steps = tuple(
-        StepRecord(
-            identifier=step.identifier,
-            version=registry[step.identifier].version,
-            parameters=tuple(
-                sorted(
-                    (field.name, getattr(step.parameters, field.name))
-                    for field in dataclasses.fields(step.parameters)  # type: ignore[arg-type]
-                )
-            ),
+    The outcomes come off the surface that came out. A step measures while it
+    runs and writes what it found into the provenance entry it appends, so what
+    it found is only knowable from the result, and reading it from anywhere else
+    would be recording what the step was expected to find.
+    """
+    already = len(surface.provenance)
+    result = run_chain(chain, registry, surface)
+    applied = result.provenance[already:]
+
+    steps = []
+    for step, record in zip(chain, applied, strict=True):
+        if record.name != step.identifier:
+            raise RuntimeError(
+                f"step {step.identifier!r} left a provenance entry naming {record.name!r}. "
+                "The outcomes are matched to the steps by the order they ran in, so an "
+                "entry under another name would file one step's measurements under "
+                "another step's parameters."
+            )
+        steps.append(
+            StepRecord(
+                identifier=step.identifier,
+                version=registry[step.identifier].version,
+                parameters=tuple(
+                    sorted(
+                        (field.name, getattr(step.parameters, field.name))
+                        for field in dataclasses.fields(step.parameters)  # type: ignore[arg-type]
+                    )
+                ),
+                outcomes=record.outcomes,
+            )
         )
-        for step in chain
-    )
 
     manifest = RunManifest(
         inputs=(FileRecord(role=role, sha256=surface_digest(surface)),),
         profile=profile,
-        steps=steps,
+        steps=tuple(steps),
         seed=seed,
         determinism=determinism,
         environment=environment,

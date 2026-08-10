@@ -227,10 +227,10 @@ def test_the_region_that_was_masked_is_recorded_beside_the_parameters_that_chose
     # if the region each cell produced is recorded, because the thing that moved
     # the score is the region and not the threshold that chose it.
     #
-    # The run manifest carries the parameters and not the outcomes, so the
-    # recovered region reaches the surface's provenance and stops there. That is
-    # a property of gutachten.manifest.StepRecord rather than of this step, and
-    # it is written up in the issue this step was built from.
+    # Both halves reach the run manifest as well, kept apart there under the
+    # same two names. A sweep reads manifests rather than surfaces, so a cell
+    # that varied depth_threshold and did not record the region it produced
+    # would report that the score moved and not what moved it.
     surface = a_surface()
     chain = [Step(identifier="mask-firing-pin", parameters=detected())]
     result, manifest = record_run(
@@ -258,7 +258,9 @@ def test_the_region_that_was_masked_is_recorded_beside_the_parameters_that_chose
     step = manifest.steps[0]
     assert step.identifier == "mask-firing-pin"
     assert dict(step.parameters)["method"] == "detected"
+    assert dict(step.outcomes) == dict(record.outcomes)
     assert '"mask-firing-pin"' in manifest.to_text()
+    assert '"masked_samples"' in manifest.to_text()
 
 
 def test_a_method_this_step_does_not_know_is_refused() -> None:
