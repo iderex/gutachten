@@ -143,6 +143,51 @@ def test_a_step_recording_its_parameters_unsorted_or_twice_is_refused() -> None:
         StepRecord(identifier="level", version="1", parameters=(("a", 1), ("a", 2)))
 
 
+def test_a_step_recording_its_outcomes_unsorted_or_twice_is_refused() -> None:
+    # The same rule the parameters carry, for the same reason: a manifest
+    # written twice has to be written identically, and a name answered twice
+    # leaves two measurements with nothing to say which the run produced.
+    with pytest.raises(ValueError, match="records its outcomes unsorted"):
+        StepRecord(
+            identifier="reject-outliers",
+            version="1",
+            parameters=(("threshold", 5.0),),
+            outcomes=(("rejected_samples", 1), ("measured_samples", 2)),
+        )
+    with pytest.raises(ValueError, match="names an outcome twice"):
+        StepRecord(
+            identifier="reject-outliers",
+            version="1",
+            parameters=(("threshold", 5.0),),
+            outcomes=(("rejected_samples", 1), ("rejected_samples", 2)),
+        )
+
+
+def test_a_step_naming_one_name_as_both_a_parameter_and_an_outcome_is_refused() -> None:
+    # The near miss is a plausible name rather than an obviously wrong one. A
+    # rejection step is told a threshold and finds how many samples it took, and
+    # a step recording `threshold` under both leaves a sweep varying its own
+    # explanation with nothing in the record able to say which reading is which.
+    with pytest.raises(ValueError, match="as both a parameter and an outcome"):
+        StepRecord(
+            identifier="reject-outliers",
+            version="1",
+            parameters=(("threshold", 5.0),),
+            outcomes=(("threshold", 4.2),),
+        )
+
+
+def test_a_step_that_measured_nothing_records_an_empty_outcome_mapping() -> None:
+    # Empty rather than absent. A step that found nothing and a step that cannot
+    # find anything are the same shape here, and which of the two a reader is
+    # looking at is answered by the step rather than by whether the key is in
+    # the file.
+    written = StepRecord(identifier="level", version="2", parameters=(("model", "plane"),))
+
+    assert written.outcomes == ()
+    assert written.to_dict()["outcomes"] == {}
+
+
 def test_a_comparison_without_a_method_or_a_version_is_refused() -> None:
     with pytest.raises(ValueError, match="comparison's method"):
         ComparisonRecord(method="", version="1", parameters=(("grid", 8),))

@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "inputs": [
     {
       "role": "scan-a",
@@ -16,14 +16,20 @@
       "version": "2",
       "parameters": {
         "model": "plane"
-      }
+      },
+      "outcomes": {}
     },
     {
-      "identifier": "bandpass",
+      "identifier": "reject-outliers",
       "version": "1",
       "parameters": {
-        "lower_um": 25.0,
-        "upper_um": 250.0
+        "criterion": "median-absolute-deviation",
+        "neighbourhood": 40.0,
+        "threshold": 5.0
+      },
+      "outcomes": {
+        "measured_samples": 8192,
+        "rejected_samples": 137
       }
     }
   ],
