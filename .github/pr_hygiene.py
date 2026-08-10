@@ -247,10 +247,18 @@ def a_new_parameter_reaches_a_profile(change: Change) -> Iterable[Finding]:
     this too, at profile load, and the two are not redundant: this one says so
     on the pull request, with the field named, before anybody has read a
     traceback out of a test run.
+
+    It reads Python and only Python. The prefix holds a README and will hold
+    more prose than that, and handing one of those to a parser produced a
+    refusal under `could-not-read`, which is the escalation this file keeps for
+    a rule that could not see a subject it was supposed to judge. A markdown
+    file is not that subject. Two refusals that mean opposite things are
+    indistinguishable in the message a reader gets, and the cheap way out of the
+    wrong one is to stop editing the README.
     """
     if change.touching(PROFILES):
         return
-    for path in change.touching(TRANSFORMS):
+    for path in (item for item in change.touching(TRANSFORMS) if item.endswith(".py")):
         before, after = change.at_base(path), change.at_head(path)
         if after is None:
             continue

@@ -191,6 +191,62 @@ def test_a_transform_changed_without_adding_a_parameter_is_not_refused() -> None
     )
 
 
+def test_prose_under_the_transforms_directory_is_not_handed_to_a_parser() -> None:
+    # The prefix holds a README and will hold more prose than that. Parsing one
+    # as Python refused the change under `could-not-read`, which is what this
+    # file says for a rule that could not see a real subject. A markdown file is
+    # not a subject this rule has, and the two refusals read identically.
+    change = a_change(
+        paths=("src/gutachten/transforms/README.md",),
+        base={"src/gutachten/transforms/README.md": "# Transforms\n"},
+        head={"src/gutachten/transforms/README.md": "# Transforms\n\nOne more sentence.\n"},
+    )
+
+    assert hygiene.review(change) == []
+    assert change.unreadable == []
+
+
+def test_a_python_file_under_the_transforms_directory_that_does_not_parse_still_refuses() -> None:
+    # The near miss for the line above. Skipping what does not parse instead of
+    # skipping what is not Python would turn a step somebody broke mid-edit into
+    # a rule that read nothing and said nothing, which is the failure the
+    # `could-not-read` tier exists for.
+    change = a_change(
+        paths=("src/gutachten/transforms/edge.py",),
+        base={"src/gutachten/transforms/edge.py": A_PARAMETER_RECORD},
+        head={"src/gutachten/transforms/edge.py": "def broken(:\n"},
+    )
+    hygiene.review(change)
+
+    assert change.unreadable != []
+    assert hygiene.report([], change.unreadable)[1] == 1
+
+
+def test_a_parameter_added_beside_an_edited_readme_is_still_refused() -> None:
+    # The other near miss. Reading only Python must not become reading nothing
+    # when a change carries both, which is the shape a real change to a step has:
+    # the step, its test, and the note next to it.
+    fired = rules_that_fired(
+        a_change(
+            paths=(
+                "src/gutachten/transforms/README.md",
+                "src/gutachten/transforms/edge.py",
+                "tests/unit/transforms/test_edge.py",
+            ),
+            base={
+                "src/gutachten/transforms/README.md": "# Transforms\n",
+                "src/gutachten/transforms/edge.py": A_PARAMETER_RECORD,
+            },
+            head={
+                "src/gutachten/transforms/README.md": "# Transforms\n\nOne more sentence.\n",
+                "src/gutachten/transforms/edge.py": THE_SAME_RECORD_WITH_ONE_MORE_FIELD,
+            },
+        )
+    )
+
+    assert fired == ["a-new-parameter-reaches-a-profile"]
+
+
 def test_a_schema_key_that_moved_without_the_version_is_refused() -> None:
     fired = hygiene.review(
         a_change(
