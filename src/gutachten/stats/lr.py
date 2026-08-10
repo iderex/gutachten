@@ -37,6 +37,20 @@ the two ends of each comparison. A draw that ends up with no comparison under
 one of the propositions says nothing about a ratio and is discarded, and how
 many were discarded is reported rather than absorbed.
 
+## The reference set may not touch the pair being evaluated
+
+A ratio whose distributions were fitted on the case in front of the reader is
+circular. It is a well known failure and it is easy to reintroduce by accident
+when the available data is small, so :func:`log_ratio` takes the pair being
+evaluated and refuses a reference set that touches either of its sources.
+
+The refusal is by source and not by pair, and that is the whole point of it. A
+reference set containing the evaluated pair itself is the version anybody would
+catch. The version that actually happens is a reference set containing a
+*different* pair from the same firearm: it looks disjoint at the level of pairs,
+it passes any check written over pairs, and the firearm's own marks are then on
+both sides of the comparison.
+
 ## Two intervals, and why both are here
 
 Every endpoint is held inside what the reference set supports, by
@@ -69,8 +83,11 @@ from gutachten.stats.distributions import (
 )
 
 __all__ = [
+    "EvaluatedPair",
     "LogRatio",
+    "NotDisjoint",
     "Propositions",
+    "check_disjoint",
     "log_ratio",
 ]
 
@@ -111,6 +128,62 @@ class Propositions:
             )
 
 
+class NotDisjoint(Exception):
+    """A reference set touches a source of the pair being evaluated."""
+
+
+@dataclass(frozen=True)
+class EvaluatedPair:
+    """The comparison in front of the reader, by the sources of its two surfaces.
+
+    Required wherever a ratio is computed. A reference set is only disjoint from
+    something, and a function that could be called without naming that something
+    would be a function that checks disjointness against nothing.
+    """
+
+    source_a: str
+    source_b: str
+
+    def __post_init__(self) -> None:
+        for name in ("source_a", "source_b"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"the evaluated pair's {name} must name a source, got {value!r}. An "
+                    "unnamed source matches nothing in a reference set, so the "
+                    "disjointness check would pass by having nothing to compare."
+                )
+
+    @property
+    def sources(self) -> frozenset[str]:
+        return frozenset({self.source_a, self.source_b})
+
+
+def check_disjoint(reference: ReferenceSet, evaluated: EvaluatedPair) -> None:
+    """Refuse a reference set that touches either source of ``evaluated``.
+
+    By source rather than by pair. The reference set is what the two
+    distributions were estimated on, so a firearm appearing in both the set and
+    the comparison puts its own marks on both sides of the ratio, whether or not
+    the particular pair is the same one.
+    """
+    touching = sorted(
+        {
+            source
+            for comparison in reference.comparisons
+            for source in comparison.sources & evaluated.sources
+        }
+    )
+    if touching:
+        raise NotDisjoint(
+            f"reference set {reference.name!r} contains comparisons from {touching}, which "
+            f"is where the pair being evaluated came from. A ratio whose distributions "
+            "were estimated on the case in front of the reader is circular, and this is "
+            "refused by source rather than by pair because the reference set does not have "
+            "to contain the same pair to be the same firearm."
+        )
+
+
 @dataclass(frozen=True)
 class LogRatio:
     """A base ten log ratio, its interval, and everything needed to read either.
@@ -123,6 +196,7 @@ class LogRatio:
     score: int
     reference_set: str
     propositions: Propositions
+    evaluated: EvaluatedPair
     point: BoundedLogRatio
     low: BoundedLogRatio
     high: BoundedLogRatio
@@ -147,6 +221,8 @@ class LogRatio:
             f"Numerator: {self.propositions.numerator}. "
             f"Denominator: {self.propositions.denominator}. "
             f"Relevant population: {self.propositions.population}. "
+            f"Evaluated pair: {self.evaluated.source_a} against "
+            f"{self.evaluated.source_b}, neither of them in the reference set. "
             f"Reference set {self.reference_set!r}: "
             f"{self.same_source.pairs} same-source comparisons over "
             f"{self.same_source.sources} sources, "
@@ -224,6 +300,7 @@ def log_ratio(
     score: int,
     *,
     propositions: Propositions,
+    evaluated: EvaluatedPair,
     resamples: int,
     seed: int,
 ) -> LogRatio:
@@ -236,6 +313,7 @@ def log_ratio(
     """
     if isinstance(score, bool) or not isinstance(score, int):
         raise TypeError(f"a score is a count of congruent cells and is an integer, got {score!r}")
+    check_disjoint(reference, evaluated)
     if isinstance(resamples, bool) or not isinstance(resamples, int) or resamples < 2:
         raise ValueError(
             f"a bootstrap needs at least two resamples, got {resamples!r}. One resample "
@@ -288,6 +366,7 @@ def log_ratio(
         score=score,
         reference_set=reference.name,
         propositions=propositions,
+        evaluated=evaluated,
         point=hold_within(bounds, point),
         low=hold_within(bounds, low_raw),
         high=hold_within(bounds, high_raw),
