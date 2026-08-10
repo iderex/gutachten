@@ -17,7 +17,14 @@ import pytest
 
 from gutachten.conclusions import conclusion_words
 from gutachten.stats.distributions import Comparison, ReferenceSet, supportable_range
-from gutachten.stats.lr import COVERAGE, LogRatio, Propositions, log_ratio
+from gutachten.stats.lr import (
+    COVERAGE,
+    EvaluatedPair,
+    LogRatio,
+    NotDisjoint,
+    Propositions,
+    log_ratio,
+)
 from tests.support.tolerance import assert_close
 
 CELLS = 20
@@ -35,6 +42,10 @@ PROPOSITIONS = Propositions(
 # real reference set has, and a fixture without it would only ever exercise the
 # infinite case.
 OVERLAPPING = 8
+
+#: The pair in front of the reader. Neither firearm appears in any reference
+#: set below, which is what the disjointness constraint is there to require.
+QUESTIONED = EvaluatedPair(source_a="questioned-left", source_b="questioned-right")
 
 
 #: Seen under the same-source proposition and under no other. The infinite case.
@@ -82,6 +93,7 @@ def a_ratio(reference: ReferenceSet | None = None, score: int = OVERLAPPING) -> 
         a_reference_set() if reference is None else reference,
         score,
         propositions=PROPOSITIONS,
+        evaluated=QUESTIONED,
         resamples=RESAMPLES,
         seed=SEED,
     )
@@ -166,9 +178,30 @@ def test_the_same_seed_gives_the_same_interval_and_a_different_one_does_not() ->
     # seed is required and it decides the answer, which is checked in both
     # directions so this cannot pass against a resampler that ignores it.
     reference = a_reference_set()
-    first = log_ratio(reference, OVERLAPPING, propositions=PROPOSITIONS, resamples=200, seed=1)
-    again = log_ratio(reference, OVERLAPPING, propositions=PROPOSITIONS, resamples=200, seed=1)
-    other = log_ratio(reference, OVERLAPPING, propositions=PROPOSITIONS, resamples=200, seed=2)
+    first = log_ratio(
+        reference,
+        OVERLAPPING,
+        propositions=PROPOSITIONS,
+        evaluated=QUESTIONED,
+        resamples=200,
+        seed=1,
+    )
+    again = log_ratio(
+        reference,
+        OVERLAPPING,
+        propositions=PROPOSITIONS,
+        evaluated=QUESTIONED,
+        resamples=200,
+        seed=1,
+    )
+    other = log_ratio(
+        reference,
+        OVERLAPPING,
+        propositions=PROPOSITIONS,
+        evaluated=QUESTIONED,
+        resamples=200,
+        seed=2,
+    )
 
     assert_close(first.unheld_width, again.unheld_width, what="the interval width", atol=0.0)
     assert first.unheld_width != other.unheld_width
@@ -197,16 +230,35 @@ def test_a_score_seen_under_neither_proposition_is_refused_rather_than_bounded()
 def test_a_bootstrap_of_one_resample_is_refused() -> None:
     # One resample gives an interval of zero width, which reads as certainty.
     with pytest.raises(ValueError, match="at least two resamples"):
-        log_ratio(a_reference_set(), OVERLAPPING, propositions=PROPOSITIONS, resamples=1, seed=SEED)
+        log_ratio(
+            a_reference_set(),
+            OVERLAPPING,
+            propositions=PROPOSITIONS,
+            evaluated=QUESTIONED,
+            resamples=1,
+            seed=SEED,
+        )
     with pytest.raises(ValueError, match="at least two resamples"):
         log_ratio(
-            a_reference_set(), OVERLAPPING, propositions=PROPOSITIONS, resamples=True, seed=SEED
+            a_reference_set(),
+            OVERLAPPING,
+            propositions=PROPOSITIONS,
+            evaluated=QUESTIONED,
+            resamples=True,
+            seed=SEED,
         )
 
 
 def test_a_score_that_is_not_an_integer_is_refused() -> None:
     with pytest.raises(TypeError, match="is an integer"):
-        log_ratio(a_reference_set(), 8.0, propositions=PROPOSITIONS, resamples=RESAMPLES, seed=SEED)  # type: ignore[arg-type]
+        log_ratio(
+            a_reference_set(),
+            8.0,
+            propositions=PROPOSITIONS,
+            evaluated=QUESTIONED,
+            resamples=RESAMPLES,
+            seed=SEED,
+        )  # type: ignore[arg-type]
 
 
 def test_the_whole_statement_says_nothing_about_what_a_comparison_showed() -> None:
@@ -245,7 +297,14 @@ def test_a_resample_that_empties_a_proposition_is_discarded_and_counted() -> Non
     # Discarded rather than absorbed. A draw with no different-source comparison
     # in it has no denominator, and counting it as a zero would be inventing an
     # observation at the end of the distribution the whole bound is about.
-    result = log_ratio(a_two_firearm_set(), 5, propositions=PROPOSITIONS, resamples=200, seed=7)
+    result = log_ratio(
+        a_two_firearm_set(),
+        5,
+        propositions=PROPOSITIONS,
+        evaluated=QUESTIONED,
+        resamples=200,
+        seed=7,
+    )
 
     assert result.resamples_discarded == 105
     assert result.resamples == 200
@@ -259,7 +318,14 @@ def test_a_set_too_small_for_a_bootstrap_over_sources_is_refused_rather_than_nar
     # the other way available is resampling pairs and that is the failure #93
     # calls the more consequential one in the milestone.
     with pytest.raises(ValueError, match="too small in sources for a bootstrap over sources"):
-        log_ratio(a_two_firearm_set(), 5, propositions=PROPOSITIONS, resamples=2, seed=4)
+        log_ratio(
+            a_two_firearm_set(),
+            5,
+            propositions=PROPOSITIONS,
+            evaluated=QUESTIONED,
+            resamples=2,
+            seed=4,
+        )
 
 
 def a_pair_resampled_width(
@@ -342,8 +408,72 @@ def test_resampling_pairs_would_give_a_narrower_interval_than_resampling_sources
     reference = a_clustered_set()
 
     by_source = log_ratio(
-        reference, OVERLAPPING, propositions=PROPOSITIONS, resamples=RESAMPLES, seed=SEED
+        reference,
+        OVERLAPPING,
+        propositions=PROPOSITIONS,
+        evaluated=QUESTIONED,
+        resamples=RESAMPLES,
+        seed=SEED,
     ).unheld_width
     by_pair = a_pair_resampled_width(reference, OVERLAPPING, resamples=RESAMPLES, seed=SEED)
 
     assert by_pair < by_source, (by_pair, by_source)
+
+
+def test_a_reference_set_holding_the_evaluated_pair_itself_is_refused() -> None:
+    # The obvious half. Fitting the distributions on the case in front of the
+    # reader is circular, and this is the form of it anybody would catch.
+    reference = a_reference_set()
+    inside = EvaluatedPair(source_a="firearm-0", source_b="firearm-1")
+
+    with pytest.raises(NotDisjoint, match=r"\['firearm-0', 'firearm-1'\]"):
+        log_ratio(
+            reference,
+            OVERLAPPING,
+            propositions=PROPOSITIONS,
+            evaluated=inside,
+            resamples=RESAMPLES,
+            seed=SEED,
+        )
+
+
+def test_a_reference_set_holding_a_different_pair_from_the_same_firearm_is_refused() -> None:
+    # The half that actually happens, and the reason the check is by source. The
+    # reference set does not contain the evaluated pair at all: firearm-0 is in
+    # it, but paired with everything except the questioned surface. Every check
+    # written over pairs passes this, and the firearm's own marks are on both
+    # sides of the ratio.
+    reference = a_reference_set()
+    assert not any(
+        comparison.sources == {"firearm-0", "questioned-right"}
+        for comparison in reference.comparisons
+    )
+
+    with pytest.raises(NotDisjoint, match="does not have to contain the same pair"):
+        log_ratio(
+            reference,
+            OVERLAPPING,
+            propositions=PROPOSITIONS,
+            evaluated=EvaluatedPair(source_a="firearm-0", source_b="questioned-right"),
+            resamples=RESAMPLES,
+            seed=SEED,
+        )
+
+
+def test_the_disjointness_check_reads_a_named_source_or_refuses_to_run() -> None:
+    # An unnamed source matches nothing, so the check would pass by having
+    # nothing to compare, which is the shape of a constraint switching itself
+    # off rather than firing.
+    with pytest.raises(ValueError, match="source_b must name a source"):
+        EvaluatedPair(source_a="questioned-left", source_b="  ")
+
+
+def test_the_whole_statement_names_the_pair_it_was_computed_for() -> None:
+    # The disjointness is a property of this result against this pair, so the
+    # pair travels with it. A statement carrying the reference set and not what
+    # it was held disjoint from cannot be checked by a reader.
+    whole = str(a_ratio())
+
+    assert "questioned-left" in whole
+    assert "questioned-right" in whole
+    assert conclusion_words(whole, source="lr") == []
