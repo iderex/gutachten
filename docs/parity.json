@@ -1,0 +1,236 @@
+{
+  "target": {
+    "repository": "iderex/jellyfin-plugin-sso",
+    "read_on": "2026-08-11",
+    "command": "gh api repos/iderex/jellyfin-plugin-sso/rules/branches/main --jq '.[] | select(.type==\"required_status_checks\") | .parameters.required_status_checks[].context'",
+    "required": [
+      "build",
+      "ABI floor build",
+      "Package (JPRM) / Build package",
+      "Package (JPRM) / Generate SBOM",
+      "CodeQL",
+      "Analyze (csharp)",
+      "DCO sign-off",
+      "Deterministic PR-hygiene checks",
+      "Enforce greppable invariants",
+      "Reject Trojan Source Unicode",
+      "Audit workflows (zizmor)",
+      "prettier",
+      "dependency-review"
+    ]
+  },
+  "decisions": [
+    {
+      "context": "build",
+      "decision": "adapted",
+      "reason": "An interpreted project has no compile step, so the equivalent question is whether the pinned environment installs and the suite passes. The check becomes a locked install plus the platform matrix.",
+      "issues": [17],
+      "produces": ["test (ubuntu)", "test (macos)", "test (windows)"]
+    },
+    {
+      "context": "ABI floor build",
+      "decision": "adapted",
+      "reason": "The risk it guards, silently requiring something newer than the declared minimum, exists here in a different form. The check becomes a matrix leg on the oldest supported interpreter and the oldest dependency versions the manifest admits.",
+      "issues": [180],
+      "produces": []
+    },
+    {
+      "context": "Package (JPRM) / Build package",
+      "decision": "adapted",
+      "reason": "A release of this is a wheel and a source distribution rather than a plugin archive, so the check builds those. The plugin repository manifest the same job family generates there has no counterpart and is recorded beside this set as not applicable.",
+      "issues": [182],
+      "produces": []
+    },
+    {
+      "context": "Package (JPRM) / Generate SBOM",
+      "decision": "adapted",
+      "reason": "The bill of materials is the same artefact over a different dependency graph, and the resolved graph here is what a reproduced result depends on.",
+      "issues": [110],
+      "produces": []
+    },
+    {
+      "context": "CodeQL",
+      "decision": "adapted",
+      "reason": "Same check, different language pack. The compiled language is replaced by Python.",
+      "issues": [108],
+      "produces": []
+    },
+    {
+      "context": "Analyze (csharp)",
+      "decision": "adapted",
+      "reason": "The analysis job of the same product, named for the language it analyses. It becomes the Python job and its name moves with it.",
+      "issues": [108],
+      "produces": []
+    },
+    {
+      "context": "DCO sign-off",
+      "decision": "ported",
+      "reason": "The failure it refuses is identical here. A commit with no sign-off trailer is refused, and what the trailer asserts waits on the license question.",
+      "issues": [],
+      "produces": ["DCO sign-off"]
+    },
+    {
+      "context": "Deterministic PR-hygiene checks",
+      "decision": "adapted",
+      "reason": "The shape is kept and the co-change rules are different, because the artefacts that must move together here are a transform and its profiles, and a manifest schema and its version.",
+      "issues": [114, 174],
+      "produces": ["pull request hygiene"]
+    },
+    {
+      "context": "Enforce greppable invariants",
+      "decision": "adapted",
+      "reason": "The mechanism is kept and the invariants are this board's own.",
+      "issues": [116],
+      "produces": []
+    },
+    {
+      "context": "Reject Trojan Source Unicode",
+      "decision": "ported",
+      "reason": "A bidirectional control character makes source read as its own opposite in any language. The check transfers unchanged.",
+      "issues": [],
+      "produces": ["Reject Trojan Source Unicode"]
+    },
+    {
+      "context": "Audit workflows (zizmor)",
+      "decision": "ported",
+      "reason": "The workflows here are the same artefact with the same failure modes, so the audit transfers unchanged.",
+      "issues": [],
+      "produces": ["Audit workflows (zizmor)", "zizmor"]
+    },
+    {
+      "context": "prettier",
+      "decision": "adapted",
+      "reason": "Unreadable diffs cost the same in any language. The source half becomes the formatter of this language and the documentation half needs a markdown formatter, which is not in force yet.",
+      "issues": [19, 181],
+      "produces": ["lint"]
+    },
+    {
+      "context": "dependency-review",
+      "decision": "ported",
+      "reason": "A newly introduced dependency carrying a known vulnerability is the same failure here, and the license question makes what enters the graph matter more rather than less.",
+      "issues": [],
+      "produces": ["dependency-review"]
+    }
+  ],
+  "not_applicable": [
+    {
+      "name": "the plugin package and its repository manifest",
+      "reason": "Nothing here is installed into a host application, so there is no archive to build for one and no manifest for it to be listed in.",
+      "in_required_set": false
+    },
+    {
+      "name": "the end to end login check",
+      "reason": "There is no login. What it does, proving the whole thing works from outside, is taken here by the worked example in the release milestone.",
+      "in_required_set": false
+    }
+  ],
+  "no_counterpart_there": [
+    {
+      "name": "a recorded run reproduces to the same scores",
+      "reason": "A published number that cannot be re-run is the situation this project argues against, and nothing on the target board protects a number.",
+      "issues": [118],
+      "produces": []
+    },
+    {
+      "name": "a parameter that is not in the manifest cannot reach the pipeline",
+      "reason": "A step reading a constant out of its own source cannot be swept, and a sweep that misses a parameter reports a stability the pipeline does not have.",
+      "issues": [53],
+      "produces": ["test (ubuntu)", "test (macos)", "test (windows)", "pull request hygiene"]
+    },
+    {
+      "name": "no output states a conclusion",
+      "reason": "A tool that prints an identification will be read as an authority whether or not it claims to be one.",
+      "issues": [101],
+      "produces": ["test (ubuntu)", "test (macos)", "test (windows)"]
+    },
+    {
+      "name": "no test in the gate touches a display, a network or an administrator",
+      "reason": "A suite needing any of the three is skipped, prompted or failed on the restricted machines this project is aimed at, and a skipped suite reports the same green as one that ran.",
+      "issues": [12],
+      "produces": ["container", "test (ubuntu)", "test (macos)", "test (windows)"]
+    }
+  ],
+  "not_required_there": [
+    {
+      "name": "mutation testing",
+      "reason": "Present on the target board without holding a merge. A suite that passes over a changed number says nothing about whether it would notice one.",
+      "issues": [112],
+      "produces": []
+    },
+    {
+      "name": "fuzzing the container reader",
+      "reason": "Present on the target board without holding a merge. The parser of an untrusted container is where this project is attackable.",
+      "issues": [115],
+      "produces": ["fuzz session"]
+    }
+  ],
+  "check_names": [
+    {
+      "name": "Audit workflows (zizmor)",
+      "workflow": ".github/workflows/zizmor.yml",
+      "on_pull_request": true
+    },
+    {
+      "name": "container",
+      "workflow": ".github/workflows/container.yml",
+      "on_pull_request": true
+    },
+    {
+      "name": "DCO sign-off",
+      "workflow": ".github/workflows/dco.yml",
+      "on_pull_request": true
+    },
+    {
+      "name": "dependency-review",
+      "workflow": ".github/workflows/dependency-review.yml",
+      "on_pull_request": true
+    },
+    {
+      "name": "fuzz session",
+      "workflow": ".github/workflows/fuzz.yml",
+      "on_pull_request": false
+    },
+    {
+      "name": "lint",
+      "workflow": ".github/workflows/lint.yml",
+      "on_pull_request": true
+    },
+    {
+      "name": "pull request hygiene",
+      "workflow": ".github/workflows/pr-hygiene.yml",
+      "on_pull_request": true
+    },
+    {
+      "name": "Reject Trojan Source Unicode",
+      "workflow": ".github/workflows/unicode-guard.yml",
+      "on_pull_request": true
+    },
+    {
+      "name": "Scorecard analysis",
+      "workflow": ".github/workflows/scorecard.yml",
+      "on_pull_request": false
+    },
+    {
+      "name": "test (macos)",
+      "workflow": ".github/workflows/test.yml",
+      "on_pull_request": true
+    },
+    {
+      "name": "test (ubuntu)",
+      "workflow": ".github/workflows/test.yml",
+      "on_pull_request": true
+    },
+    {
+      "name": "test (windows)",
+      "workflow": ".github/workflows/test.yml",
+      "on_pull_request": true
+    },
+    {
+      "name": "zizmor",
+      "workflow": null,
+      "on_pull_request": true,
+      "source": "code scanning, from the SARIF the workflow audit uploads under that category",
+      "conditional": "The upload step is skipped where the token cannot write security events, which is a fork pull request and a Dependabot one. On those the check run is absent and the workflow audit still refuses findings."
+    }
+  ]
+}

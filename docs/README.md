@@ -19,6 +19,9 @@ they do not disagree.
 - [ranges.md](ranges.md): the plausible range declared for every parameter a
   sweep can reach, where each bound came from, and how much of the set is this
   repository's own judgement rather than anybody's published value.
+- [parity.md](parity.md): the quality target this repository is held to, what was
+  decided about each check in it, and the list of check names this repository
+  produces with which of them can hold a merge at all.
 - [sensitivity-design.md](sensitivity-design.md): which parameters the global
   analysis moves, how the joint space is sampled, where the sample size comes
   from, what will be reported, and why the sample is small enough that some of
