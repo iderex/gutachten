@@ -6,10 +6,10 @@ Which parameters move, over which ranges, how the joint space is sampled, how
 large the sample is and what will be reported are all here, and the commit that
 carries them is the record that they were chosen before any result was seen.
 
-The reason is plain. This project's value depends on being believable when the
-result is inconvenient, and a design fixed after the results are seen is not
-believable even when it is honest. Nothing below is a result and no sweep output
-exists in this repository yet:
+The reason is plain. A result here is worth something only when it stays
+believable at the moment it is inconvenient. A design fixed after the results
+are seen fails that test even when it is honest. Nothing below is a result and
+no sweep output exists in this repository yet:
 
     git ls-files | grep -icE 'results|sweep-out' ; echo "exit=$?"
     0
@@ -74,10 +74,10 @@ no longer matches the file it describes.
 ## The space is not a hypercube, and the four mappings are how it is made one
 
 Variance based indices are defined over coordinates that vary independently. The
-parameter space here is not that: nine parameters are fixed by another parameter
-rather than chosen, three decide a mode as well as a value, and one is
-constrained by a second one. A design that ignored that would spend most of its
-sample on cells the pipeline refuses to run.
+parameter space here is not that: nine parameters take their value from another
+parameter, three decide a mode as well as a value, and one is constrained by a
+second one. A design that ignored that would spend most of its sample on cells
+the pipeline refuses to run.
 
 So the sample is drawn in a forty dimensional unit hypercube and mapped
 deterministically onto parameter values. The mapping is part of the design and
@@ -102,9 +102,9 @@ absence: whether the levelling fit is robust at all, whether the filter is,
 whether the outlier criterion is evaluated locally or over the whole surface.
 The lower half of the unit coordinate is the null and the upper half is mapped
 across the declared interval, and the coordinate coupled to it takes the same
-branch. Half rather than any other share, because the two modes are the thing
-being compared and an unequal split would decide in advance which mode the study
-mostly measures. Three coordinates, each carrying one coupled partner.
+branch. The split is half, because the two modes are the thing being compared
+and an unequal split would decide in advance which mode the study mostly
+measures. Three coordinates, each carrying one coupled partner.
 
 **`snapped`.** The search refuses a rotation step that does not divide the
 rotation range:
@@ -128,9 +128,9 @@ models. That understates its effect where the polynomial model is used and it is
 the honest quantity to report for a study whose model choice is itself a
 parameter.
 
-The report states this beside every index of a controlled coordinate rather than
-once at the top, because an index quoted out of a table is what a reader takes
-away.
+The report states this beside every index of a controlled coordinate. Once at
+the top would not survive an index quoted out of a table, which is what a reader
+takes away.
 
 ## The sample size, and where it comes from
 
@@ -140,7 +140,7 @@ together, with `k` the forty coordinates and `N` the base sample. One evaluation
 runs every declared pair, so the cells to be computed are `N(k+2)` times the
 number of pairs.
 
-What a cell costs was measured rather than assumed:
+What a cell costs was measured:
 
     .venv/Scripts/python.exe harness/quiet-machine/sweep_cost.py
 
@@ -156,7 +156,7 @@ What a cell costs was measured rather than assumed:
 
 One machine, one run each, in reference mode. It is a measurement of that machine
 rather than of this code, and a laboratory planning a sweep should re-run the
-script rather than quote these figures.
+script. These figures are not a constant.
 
 The cost of a cell is not one number, because the search settings are themselves
 swept. The base of this design evaluates 396 correlations and the most expensive
@@ -164,7 +164,7 @@ corner the ranges admit evaluates 34704, which is 87.6 times as many. Cost
 tracks that count: predicting the worst row from the base row and the ratio gives
 181.41 seconds against 197.13 measured, so the model under-predicts by 8.7 per
 cent at the one point where it can be checked, and the arithmetic below carries
-that factor rather than ignoring it.
+that factor.
 
 What the sweep will actually pay per cell is the cost at the mean number of
 correlations over the declared ranges, not at the base:
@@ -184,8 +184,8 @@ correlations over the declared ranges, not at the base:
     median correlations: 612.0
 
 The mean is 3.25 times the base. The draw is the same uniform draw over the
-declared ranges the design itself makes, with the snapping applied, so this is
-the design's own distribution rather than a convenient one.
+declared ranges the design itself makes, with the snapping applied, so the
+numbers below come from the design's own distribution.
 
 The budget is thirty days of one machine of the kind measured, doing this and
 nothing else. That is a declared choice and not a fact about anything:
@@ -205,10 +205,10 @@ nothing else. That is a declared choice and not a fact about anything:
     N= 256 evaluations= 10752 cells= 172032 days=  101.4
 
 So the base sample is 64, which is the largest power of two that fits. A power of
-two rather than the largest integer that fits, because the balance properties a
-Sobol sequence is chosen for hold at powers of two and are lost between them.
+two, because the balance properties a Sobol sequence is chosen for hold at powers
+of two and are lost between them.
 
-## The sample is small, and that is the finding rather than a caveat
+## The sample is small, and that is the finding
 
 Sixty four base samples over forty coordinates is at the bottom of what a
 variance based analysis is usually run at. Total order indices are the quantity
@@ -220,11 +220,11 @@ The design commits to three things because of that.
 
 The convergence of every index with sample size is reported, computed on nested
 prefixes of the same sequence, so a reader can see whether the estimate had
-settled rather than taking the final value on trust.
+settled; the final value is not taken on trust.
 
 An index whose bootstrap interval does not separate it from the next parameter in
-the ranking is reported as not separated, and the ranking says so at that point
-rather than presenting an order the sample cannot support.
+the ranking is reported as not separated, and the ranking says so at that point,
+because the sample cannot support the order it would otherwise print.
 
 If the interaction terms come back with intervals spanning most of their possible
 range, they are reported as not estimated at this sample size and the numbers are
@@ -249,8 +249,9 @@ treats the many pairs from one firearm as independent, which they are not, and
 produces an interval that is too narrow by a wide margin.
 
 The gap between the two indices is the interaction effect, and it is the quantity
-a one at a time design cannot produce and this project needs. It is reported with
-its own interval rather than as a difference of two point values.
+a one at a time design cannot produce and this project needs. Its interval is
+computed for the gap itself, because a difference of two point values carries no
+interval at all.
 
 Every quantity is reported twice, once as an effect on the score and once as an
 effect on the classification outcome, which is
@@ -265,8 +266,7 @@ The design runs on generated pairs at 384 by 384 samples with a spacing of 4
 micrometres, which is 1.54 millimetres across, and on sixteen pairs, eight
 matching and eight non-matching.
 
-That field is smaller than a whole primer face and the design says so rather than
-implying otherwise. A field covering a 9 millimetre case head at this spacing
+That field is smaller than a whole primer face and the design says so. A field covering a 9 millimetre case head at this spacing
 would be about 2250 samples on a side, which is thirty four times the area, and
 the measurement above says the cost per correlation grows with the area of the
 reference. A design at that size is not affordable on one machine of the kind
