@@ -77,18 +77,14 @@ that is nearly free and recovering it later is not.
 The failure it avoids is specific, and each half of it is a failure that looks
 like something else.
 
-A suite that needs a display gets skipped in containers, and a skipped suite
-reports the same green as one that ran.
-
-A suite that needs an administrator raises a consent prompt on Windows, and
-answering that prompt settles only the one executable path that asked, so every
-new build directory asks again.
-
-A suite that needs a network fails on an aircraft, in an air-gapped laboratory
-and on the day the remote host is down. Each of those failures looks exactly like
-a real defect, and somebody spends an afternoon on it. This project is aimed at
-forensic laboratories, which are often the most restricted machines its users
-have.
+Needing a display gets a suite skipped in containers, and a skipped suite reports
+the same green as one that ran. Needing an administrator raises a consent prompt
+on Windows; answering it settles only the one executable path that asked, so
+every new build directory asks again. Needing a network fails on an aircraft, in
+an air-gapped laboratory and on the day the remote host is down. Each of those
+failures looks exactly like a real defect, and somebody spends an afternoon on
+it. This project is aimed at forensic laboratories, which are often the most
+restricted machines its users have.
 
 Three things follow. Plots render through a non-interactive backend to a file
 and no test opens a window. Nothing in the gate binds a socket or resolves a
