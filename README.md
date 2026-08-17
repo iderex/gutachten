@@ -25,3 +25,9 @@ question for the maintainer and it is open.
 
 See [SECURITY.md](SECURITY.md) for what to report privately and what to report in
 the open, and [NOTICE.md](NOTICE.md) for the intended-use notice.
+
+## License
+
+AGPL-3.0, copyright 2026 Nils Lehnen.
+
+The full text is in [LICENSE](LICENSE).
