@@ -6,6 +6,10 @@ Report privately, through GitHub's private vulnerability reporting on this
 repository: open the Security tab and use "Report a vulnerability". That opens a
 channel visible only to the maintainer.
 
+The form is here, without navigating:
+
+<https://github.com/iderex/gutachten/security/advisories/new>
+
 Do not open a public issue for something that is exploitable. Do open a public
 issue for everything else, including the analytical defects described below,
 because those are the ones that benefit from being argued about in the open.
